@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量化终端 v2</title>
+<script src="/static/vendor/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#f5f6fa; --card:#fff; --text:#1a1d26; --muted:#6b7280; --border:#e5e7eb;
+    --primary:#2563eb; --primary-dark:#1d4ed8; --green:#16a34a; --red:#dc2626;
+    --amber:#d97706; --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.6;padding-bottom:60px}
+  .container{max-width:1280px;margin:0 auto;padding:0 20px}
+
+  header{background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+  .header-inner{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;flex-wrap:wrap}
+  .logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700}
+  .logo-badge{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#2563eb,#7c3aed);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  select{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;
+    background:#fff;font-family:inherit;cursor:pointer;outline:none}
+  select:focus{border-color:var(--primary)}
+
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:22px;background:#fff;
+    padding:0 20px;position:sticky;top:57px;z-index:99}
+  .tab{padding:12px 20px;cursor:pointer;font-size:15px;color:var(--muted);border-bottom:2px solid transparent;
+    transition:.15s;font-weight:500}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+
+  .card{background:var(--card);border-radius:14px;padding:20px;box-shadow:var(--shadow);margin-bottom:18px}
+  .card-title{font-size:15px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .card-title::before{content:"";width:4px;height:15px;background:var(--primary);border-radius:2px}
+
+  .search-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input[type=text],input[type=password],input[type=number]{
+    flex:1;min-width:180px;padding:10px 14px;border:1px solid var(--border);border-radius:9px;
+    font-size:14px;outline:none;font-family:inherit;transition:.15s}
+  input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+  button{padding:10px 18px;border:none;border-radius:9px;background:var(--primary);color:#fff;
+    font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s}
+  button:hover{background:var(--primary-dark)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.ghost{background:#f3f4f6;color:var(--text)}
+  button.ghost:hover{background:#e5e7eb}
+  button.danger{background:#fee2e2;color:#b91c1c}
+  button.sm{padding:5px 12px;font-size:12.5px}
+
+  .markets{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:13.5px}
+  .markets label{display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--muted)}
+  .markets input{cursor:pointer}
+
+  .suggest{position:relative}
+  .suggest-list{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);
+    border-radius:9px;margin-top:4px;box-shadow:0 8px 24px rgba(0,0,0,.1);z-index:50;max-height:320px;overflow:auto}
+  .suggest-item{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:10px;font-size:14px}
+  .suggest-item:hover{background:#f3f4f6}
+  .mkt-tag{font-size:11px;padding:1px 7px;border-radius:20px;background:#eef2ff;color:#4338ca}
+
+  .hero{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:flex-start}
+  .hero h2{font-size:24px;font-weight:700}
+  .hero .meta{color:var(--muted);font-size:13px;margin-top:3px}
+  .score-big{text-align:center;min-width:130px}
+  .score-big .num{font-size:44px;font-weight:800;line-height:1;color:var(--primary)}
+  .score-big .lbl{font-size:12.5px;color:var(--muted);margin-top:4px}
+  .rating{display:inline-block;padding:3px 12px;border-radius:20px;font-size:13px;font-weight:600;margin-top:6px}
+  .r-buy{background:#dcfce7;color:#166534}
+  .r-watch{background:#dbeafe;color:#1e40af}
+  .r-neutral{background:#f3f4f6;color:#4b5563}
+  .r-avoid{background:#fee2e2;color:#991b1b}
+
+  .anchor-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:18px}
+  .anchor{background:var(--bg);border-radius:11px;padding:12px 14px}
+  .anchor .k{font-size:12px;color:var(--muted)}
+  .anchor .v{font-size:17px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+  .anchor .s{font-size:11px;color:var(--muted);margin-top:2px}
+
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px;margin-top:16px}
+  .metric{background:var(--bg);border-radius:10px;padding:12px}
+  .metric .k{font-size:11.5px;color:var(--muted)}
+  .metric .v{font-size:18px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+  .pos{color:var(--red)}.neg{color:var(--green)}.neutral{color:var(--text)}
+
+  .chart{width:100%;height:360px}
+  .chart-sm{width:100%;height:260px}
+
+  .ai-panel{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.ai-panel{grid-template-columns:1fr}}
+  .ai-block{background:var(--bg);border-radius:11px;padding:14px}
+  .ai-block h4{font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .ai-block ul{list-style:none;font-size:13.5px}
+  .ai-block li{padding:5px 0 5px 16px;position:relative;line-height:1.5}
+  .ai-block li::before{content:"•";position:absolute;left:4px;color:var(--muted)}
+  .bull li::before{content:"▲";color:var(--red);font-size:9px;top:7px}
+  .bear li::before{content:"▼";color:var(--green);font-size:9px;top:7px}
+
+  .warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:9px;
+    padding:10px 14px;font-size:13px;margin-top:12px}
+  .err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:9px;
+    padding:10px 14px;font-size:13px;margin-top:12px}
+  .ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:9px;
+    padding:10px 14px;font-size:13px;margin-top:12px}
+
+  .loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:36px;color:var(--muted)}
+  .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--primary);
+    border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .hidden{display:none!important}
+
+  .news-item{padding:12px 0;border-bottom:1px solid var(--border)}
+  .news-item:last-child{border-bottom:none}
+  .news-item .t{font-size:14.5px;font-weight:500;margin-bottom:4px}
+  .news-item .t a{color:var(--text);text-decoration:none}
+  .news-item .t a:hover{color:var(--primary)}
+  .news-item .m{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+  .news-item .d{font-size:13px;color:#4b5563;margin-top:5px}
+
+  .sentiment{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .sent-badge{padding:6px 16px;border-radius:20px;font-weight:700;font-size:15px}
+  .sent-pos{background:#fee2e2;color:#991b1b}
+  .sent-neg{background:#dcfce7;color:#166534}
+  .sent-neu{background:#f3f4f6;color:#4b5563}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-weight:500;font-size:12.5px}
+
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  @media(max-width:700px){.form-grid{grid-template-columns:1fr}}
+  .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+
+  .disclaimer{margin-top:26px;padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;
+    border-radius:11px;font-size:12.5px;color:#92400e}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container header-inner">
+    <div class="logo"><div class="logo-badge">量</div><div>量化终端 <span style="font-size:12px;color:#6b7280">v2</span></div></div>
+    <div class="toolbar">
+      <select id="aiModel" title="选择AI模型">
+        <option value="">AI：未配置</option>
+      </select>
+      <select id="profile" title="选择分析模式">
+        <option value="balanced">分析模式：均衡型</option>
+      </select>
+      <button class="ghost sm" onclick="switchTab('settings')">设置</button>
+    </div>
+  </div>
+</header>
+
+<div class="tabs container" style="padding-left:0;padding-right:0">
+  <div class="tab active" data-tab="analysis" onclick="switchTab('analysis')">个股分析</div>
+  <div class="tab" data-tab="news" onclick="switchTab('news')">新闻情报</div>
+  <div class="tab" data-tab="screen" onclick="switchTab('screen')">选股筛选</div>
+  <div class="tab" data-tab="settings" onclick="switchTab('settings')">AI 设置</div>
+</div>
+
+<div class="container">
+
+  <!-- ==================== 分析 ==================== -->
+  <div id="tab-analysis">
+    <div class="card">
+      <div class="search-row suggest">
+        <input type="text" id="q" placeholder="输入代码或名称，例如 600519 / 茅台 / AAPL"
+               oninput="onSearchInput()" onkeydown="if(event.key==='Enter')pickFirst()">
+        <button id="analyzeBtn" onclick="pickFirst()">开始分析</button>
+        <div id="suggestList" class="suggest-list hidden"></div>
+      </div>
+      <div class="markets">
+        <span style="color:#6b7280">市场：</span>
+        <label><input type="checkbox" class="mkt" value="SH" checked> 沪市</label>
+        <label><input type="checkbox" class="mkt" value="SZ" checked> 深市</label>
+        <label><input type="checkbox" class="mkt" value="HK" checked> 港股</label>
+        <label><input type="checkbox" class="mkt" value="US" checked> 美股</label>
+        <label style="margin-left:auto"><input type="checkbox" id="useAI" checked> 启用 AI 定性分析</label>
+      </div>
+    </div>
+
+    <div id="loading" class="loading hidden"><div class="spinner"></div><span>正在分析…（首次约3-8秒，AI分析需额外等待）</span></div>
+    <div id="errorBox" class="err hidden"></div>
+    <div id="result" class="hidden"></div>
+  </div>
+
+  <!-- ==================== 新闻 ==================== -->
+  <div id="tab-news" class="hidden">
+    <div class="card">
+      <div class="search-row">
+        <input type="text" id="newsQ" placeholder="输入关键词，例如 固态电池 / 美联储 / AI算力"
+               onkeydown="if(event.key==='Enter')loadNews()">
+        <select id="newsDays" style="flex:0 0 auto">
+          <option value="3">近3天</option>
+          <option value="7" selected>近7天</option>
+          <option value="30">近30天</option>
+        </select>
+        <button onclick="loadNews()">检索并分析</button>
+      </div>
+    </div>
+    <div id="newsLoading" class="loading hidden"><div class="spinner"></div><span>正在抓取多源新闻并归纳…</span></div>
+    <div id="newsError" class="err hidden"></div>
+    <div id="newsResult" class="hidden"></div>
+  </div>
+
+  <!-- ==================== 选股筛选 ==================== -->
+  <div id="tab-screen" class="hidden">
+    <div class="card">
+      <div class="card-title">候选池</div>
+      <div class="search-row">
+        <select id="universeSector" style="flex:0 0 220px">
+          <option value="">全部板块（约100只）</option>
+        </select>
+        <span id="universeCount" style="font-size:13px;color:#6b7280"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">筛选条件（留空表示不限）</div>
+      <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+        <div class="field"><label>PE 上限</label>
+          <input type="number" id="fPeMax" placeholder="如 30" step="1"></div>
+        <div class="field"><label>ROE 下限 (%)</label>
+          <input type="number" id="fRoeMin" placeholder="如 15" step="1"></div>
+        <div class="field"><label>市值下限 (亿)</label>
+          <input type="number" id="fCapMin" placeholder="如 100" step="10"></div>
+        <div class="field"><label>3月动量下限 (%)</label>
+          <input type="number" id="fMomMin" placeholder="如 0" step="1"></div>
+        <div class="field"><label>最大回撤上限 (%)</label>
+          <input type="number" id="fDdMax" placeholder="如 -40" step="5"></div>
+        <div class="field"><label>综合分下限</label>
+          <input type="number" id="fScoreMin" placeholder="如 55" step="1"></div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button id="screenBtn" onclick="runScreen()">开始筛选</button>
+        <button class="ghost" onclick="clearScreenConditions()">清空条件</button>
+        <span style="font-size:12.5px;color:#6b7280">
+          使用顶部「分析模式」的权重；不调用 AI，速度较快
+        </span>
+      </div>
+    </div>
+
+    <div id="screenLoading" class="loading hidden">
+      <div class="spinner"></div><span>正在并发评估…（20只约需5-8秒）</span></div>
+    <div id="screenError" class="err hidden"></div>
+    <div id="screenResult" class="hidden"></div>
+  </div>
+
+  <!-- ==================== 设置 ==================== -->
+  <div id="tab-settings" class="hidden">
+    <div class="card">
+      <div class="card-title">已配置的 AI 渠道</div>
+      <div id="channelList"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">添加渠道（支持中转站）</div>
+      <div class="form-grid">
+        <div class="field"><label>预设</label>
+          <select id="preset" onchange="applyPreset()" style="width:100%"></select></div>
+        <div class="field"><label>显示名</label>
+          <input type="text" id="chName" placeholder="例如 DS-中转1"></div>
+        <div class="field"><label>接口地址 base_url</label>
+          <input type="text" id="chBase" placeholder="https://xxx.com/v1"></div>
+        <div class="field"><label>模型名</label>
+          <input type="text" id="chModel" placeholder="deepseek-chat"></div>
+        <div class="field"><label>API Key</label>
+          <input type="password" id="chKey" placeholder="sk-..."></div>
+        <div class="field"><label>协议</label>
+          <select id="chProtocol" style="width:100%">
+            <option value="openai">OpenAI 兼容</option>
+            <option value="anthropic">Anthropic 原生</option>
+          </select></div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px">
+        <button onclick="addChannel()">保存渠道</button>
+        <button class="ghost" onclick="loadChannels()">刷新</button>
+      </div>
+      <div id="chMsg"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">AI 用量统计（近7天）</div>
+      <div id="usageBox"><div class="loading">加载中…</div></div>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    <strong>用途声明：</strong>本软件为个人科学研究工具，所有输出均为基于公开数据的量化计算结果与 AI 研究笔记，
+    不构成对外投资建议。目标价与买卖点为算法计算结果，请自行判断风险。
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 全局
+// ============================================================
+let PROFILES = [];
+let MARKETS = {};
+let CHARTS = {};
+let currentSymbol = null;
+
+const $ = id => document.getElementById(id);
+const show = id => $(id).classList.remove('hidden');
+const hide = id => $(id).classList.add('hidden');
+
+function pct(v, d = 2) { return (v === null || v === undefined) ? '—' : (v * 100).toFixed(d) + '%'; }
+function num(v, d = 2) { return (v === null || v === undefined) ? '—' : Number(v).toFixed(d); }
+function cls(v) { return v > 0 ? 'pos' : v < 0 ? 'neg' : 'neutral'; }
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  ['analysis','news','screen','settings'].forEach(n => {
+    $('tab-' + n).classList.toggle('hidden', n !== name);
+  });
+  if (name === 'settings') { loadChannels(); loadUsage(); }
+  if (name === 'screen') { loadSectors(); }
+  setTimeout(() => Object.values(CHARTS).forEach(c => c && c.resize()), 60);
+}
+
+// ============================================================
+// 初始化
+// ============================================================
+async function init() {
+  try {
+    const r = await fetch('/api/v2/profiles');
+    const d = await r.json();
+    PROFILES = d.profiles;
+    $('profile').innerHTML = PROFILES.map(p =>
+      `<option value="${p.key}">分析模式：${p.label}</option>`).join('');
+  } catch (e) { console.error(e); }
+
+  try {
+    const r = await fetch('/api/v2/markets');
+    const d = await r.json();
+    d.markets.forEach(m => MARKETS[m.code] = m);
+  } catch (e) { console.error(e); }
+
+  try {
+    const r = await fetch('/api/v2/channels');
+    const d = await r.json();
+    updateModelSelect(d.channels);
+  } catch (e) { console.error(e); }
+
+  try {
+    const r = await fetch('/api/v2/channels/presets');
+    const d = await r.json();
+    $('preset').innerHTML = d.presets.map(p =>
+      `<option value="${p.key}">${p.label}</option>`).join('');
+    window.PRESETS = d.presets;
+  } catch (e) { console.error(e); }
+}
+
+function updateModelSelect(channels) {
+  const enabled = channels.filter(c => c.enabled);
+  $('aiModel').innerHTML = enabled.length
+    ? enabled.map(c => `<option value="${c.id}">AI：${esc(c.name)}</option>`).join('')
+    : '<option value="">AI：未配置</option>';
+}
+
+// ============================================================
+// 搜索
+// ============================================================
+let searchTimer = null;
+function onSearchInput() {
+  clearTimeout(searchTimer);
+  const q = $('q').value.trim();
+  if (q.length < 1) { hide('suggestList'); return; }
+  searchTimer = setTimeout(() => doSearch(q), 350);
+}
+
+function selectedMarkets() {
+  return [...document.querySelectorAll('.mkt:checked')].map(i => i.value).join(',');
+}
+
+async function doSearch(q) {
+  try {
+    const r = await fetch(`/api/v2/search?q=${encodeURIComponent(q)}&markets=${selectedMarkets()}&limit=10`);
+    const d = await r.json();
+    if (!d.results.length) { hide('suggestList'); return; }
+    $('suggestList').innerHTML = d.results.map(x =>
+      `<div class="suggest-item" onclick="analyze('${x.symbol}')">
+         <span>${esc(x.name)} <span style="color:#9ca3af;font-size:12px">${x.symbol}</span></span>
+         <span class="mkt-tag">${esc(x.market)}</span>
+       </div>`).join('');
+    show('suggestList');
+  } catch (e) { hide('suggestList'); }
+}
+
+function pickFirst() {
+  const first = document.querySelector('.suggest-item');
+  if (first) { first.click(); return; }
+  const q = $('q').value.trim();
+  if (!q) return;
+  // 直接当代码用
+  analyze(q.toUpperCase());
+}
+
+// ============================================================
+// 分析
+// ============================================================
+async function analyze(symbol) {
+  hide('suggestList');
+  currentSymbol = symbol;
+  hide('result'); hide('errorBox'); show('loading');
+  $('analyzeBtn').disabled = true;
+
+  const profile = $('profile').value;
+  const useAI = $('useAI').checked;
+  const ch = $('aiModel').value;
+
+  try {
+    let url = `/api/v2/analyze/${encodeURIComponent(symbol)}?profile=${profile}&use_ai=${useAI}`;
+    if (useAI && ch) url += `&channel_id=${ch}`;
+    const r = await fetch(url);
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e.detail || `HTTP ${r.status}`);
+    }
+    const d = await r.json();
+    show('result');
+    renderAnalysis(d);
+  } catch (e) {
+    $('errorBox').textContent = '❌ ' + e.message;
+    show('errorBox');
+  } finally {
+    hide('loading');
+    $('analyzeBtn').disabled = false;
+  }
+}
+
+function ratingClass(r) {
+  if (r === '强烈关注' || r === '关注') return 'r-buy';
+  if (r === '回避' || r === '强烈回避') return 'r-avoid';
+  return 'r-neutral';
+}
+
+function renderAnalysis(d) {
+  const f = d.final, pm = d.price_metrics, fm = d.fundamental_metrics, a = d.anchors;
+  const ai = d.ai;
+  const price = f.current_price;
+
+  const priceMove = pm.total_return;
+  const er = f.entry_range || {};
+
+  let html = `
+  <div class="card">
+    <div class="hero">
+      <div>
+        <h2>${esc(d.name)}</h2>
+        <div class="meta">${d.symbol} · ${esc(d.market_label)} ·
+          现价 <b class="${cls(priceMove)}">${num(price)}</b> ·
+          ${pm.days}个交易日 · 数据源 ${esc(d.meta.kline_source)}</div>
+        <div style="margin-top:8px">
+          <span class="rating ${ratingClass(f.rating)}">${esc(f.rating)}</span>
+          ${f.confidence !== null && f.confidence !== undefined
+            ? `<span style="font-size:12.5px;color:#6b7280;margin-left:8px">置信度 ${(f.confidence*100).toFixed(0)}%</span>` : ''}
+          ${f.horizon ? `<span style="font-size:12.5px;color:#6b7280;margin-left:8px">周期 ${esc(f.horizon)}</span>` : ''}
+        </div>
+      </div>
+      <div class="score-big">
+        <div class="num">${f.composite}</div>
+        <div class="lbl">${esc(f.grade)}</div>
+        <div style="font-size:11.5px;color:#9ca3af;margin-top:4px">
+          量化 ${f.quant_only}${f.ai_only !== null ? ' · AI ' + f.ai_only : ''}
+        </div>
+      </div>
+    </div>
+
+    <div class="anchor-bar">
+      <div class="anchor"><div class="k">买入区间</div>
+        <div class="v">${num(er.low)} ~ ${num(er.high)}</div>
+        <div class="s">${er.low && price ? ((er.low/price-1)*100).toFixed(1)+'% ~ ' + ((er.high/price-1)*100).toFixed(1)+'%' : ''}</div></div>
+      <div class="anchor"><div class="k">目标价</div>
+        <div class="v" style="color:#dc2626">${num(f.target_price)}</div>
+        <div class="s">${esc(f.target_method || '')}${price && f.target_price ? ' · ' + ((f.target_price/price-1)*100).toFixed(1) + '%' : ''}</div></div>
+      <div class="anchor"><div class="k">止损位</div>
+        <div class="v" style="color:#16a34a">${num(f.stop_loss)}</div>
+        <div class="s">${price && f.stop_loss ? ((f.stop_loss/price-1)*100).toFixed(1) + '%' : ''}</div></div>
+      <div class="anchor"><div class="k">建议仓位</div>
+        <div class="v">${num(f.position_pct, 1)}%</div>
+        <div class="s">风险预算法</div></div>
+      <div class="anchor"><div class="k">风险收益比</div>
+        <div class="v">${f.risk_reward ?? '—'}</div>
+        <div class="s">目标价/止损</div></div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="k">年化收益</div><div class="v ${cls(pm.annual_return)}">${pct(pm.annual_return)}</div></div>
+      <div class="metric"><div class="k">最大回撤</div><div class="v neg">${pct(pm.max_drawdown)}</div></div>
+      <div class="metric"><div class="k">年化波动</div><div class="v">${pct(pm.annual_volatility)}</div></div>
+      <div class="metric"><div class="k">夏普比率</div><div class="v ${cls(pm.sharpe)}">${num(pm.sharpe)}</div></div>
+      <div class="metric"><div class="k">索提诺</div><div class="v ${cls(pm.sortino)}">${num(pm.sortino)}</div></div>
+      <div class="metric"><div class="k">卡玛</div><div class="v ${cls(pm.calmar)}">${num(pm.calmar)}</div></div>
+      <div class="metric"><div class="k">RSI(14)</div><div class="v">${num(pm.rsi_14, 1)}</div></div>
+      <div class="metric"><div class="k">52周位置</div><div class="v">${pct(pm.position_52w, 0)}</div></div>
+      <div class="metric"><div class="k">Beta</div><div class="v">${num(pm.beta)}</div></div>
+      <div class="metric"><div class="k">Alpha</div><div class="v ${cls(pm.alpha)}">${pm.alpha !== null ? pct(pm.alpha) : '—'}</div></div>
+      ${fm.has_fundamentals ? `
+      <div class="metric"><div class="k">ROE</div><div class="v">${num(fm.roe, 1)}%</div></div>
+      <div class="metric"><div class="k">毛利率</div><div class="v">${num(fm.gross_margin, 1)}%</div></div>
+      <div class="metric"><div class="k">PE(TTM)</div><div class="v">${num(fm.pe_ttm)}</div></div>
+      <div class="metric"><div class="k">PB</div><div class="v">${num(fm.pb)}</div></div>
+      <div class="metric"><div class="k">负债率</div><div class="v">${num(fm.debt_ratio, 1)}%</div></div>
+      <div class="metric"><div class="k">营收增速</div><div class="v ${cls(fm.revenue_yoy)}">${num(fm.revenue_yoy, 1)}%</div></div>
+      ` : ''}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">价格走势与锚点</div>
+    <div id="klineChart" class="chart"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">六维度评分</div>
+    <div id="radarChart" class="chart-sm"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="cursor:pointer" onclick="toggleExt()">
+      高级指标（26项）<span style="font-size:12px;color:#9ca3af;font-weight:400;margin-left:6px">点击展开</span>
+    </div>
+    <div id="extPanel" class="hidden">${renderExtended(d.extended_metrics || {})}</div>
+  </div>`;
+
+  if (ai) {
+    html += `
+    <div class="card">
+      <div class="card-title">AI 定性分析</div>
+      <div class="ai-panel">
+        <div class="ai-block"><h4>▲ 看多理由</h4><ul class="bull">
+          ${(ai.bull_points||[]).map(x => `<li>${esc(x)}</li>`).join('') || '<li>—</li>'}</ul></div>
+        <div class="ai-block"><h4>▼ 看空理由</h4><ul class="bear">
+          ${(ai.bear_points||[]).map(x => `<li>${esc(x)}</li>`).join('') || '<li>—</li>'}</ul></div>
+        <div class="ai-block"><h4>⚡ 潜在催化剂</h4><ul>
+          ${(ai.catalysts||[]).map(x => `<li>${esc(x)}</li>`).join('') || '<li>—</li>'}</ul></div>
+        <div class="ai-block"><h4>⚠ 主要风险</h4><ul>
+          ${(ai.risks||[]).map(x => `<li>${esc(x)}</li>`).join('') || '<li>—</li>'}</ul></div>
+      </div>
+      <div style="margin-top:14px;font-size:13.5px;color:#374151">
+        <b>一句话：</b>${esc(ai.summary || '')}
+      </div>
+      <div style="margin-top:10px;font-size:11.5px;color:#9ca3af">
+        渠道 ${esc(d.meta.ai_channel || '')} · 延迟 ${d.meta.ai_latency_ms || 0}ms · tokens ${esc(d.meta.ai_tokens || '')}
+      </div>
+    </div>`;
+  } else if (d.meta.ai_error) {
+    html += `<div class="warn"><b>AI 分析未完成：</b>${esc(d.meta.ai_error)}<br>
+      <span style="font-size:12px">量化结果不受影响，可继续使用。</span></div>`;
+  }
+
+  if (d.meta.ai_warnings && d.meta.ai_warnings.length) {
+    html += `<div class="warn"><b>AI 输出校验：</b><br>` +
+      d.meta.ai_warnings.map(w => '· ' + esc(w)).join('<br>') + `</div>`;
+  }
+
+  $('result').innerHTML = html;
+  renderKline(d);
+  renderRadar(f.dimensions);
+}
+
+function renderKline(d) {
+  const pm = d.price_metrics, f = d.final, a = d.anchors;
+  const series = d.price_series || null;
+
+  // 前端没有完整序列时，用净值/收盘价点（后端暂未返回，退化只画锚点）
+  const chart = CHARTS.kline || (CHARTS.kline = echarts.init($('klineChart')));
+  const er = f.entry_range || {};
+
+  const markLines = [
+    { yAxis: f.current_price, label: { formatter: '现价', position: 'insideEndTop' }, lineStyle: { color: '#111827' } },
+    f.target_price ? { yAxis: f.target_price, label: { formatter: '目标', position: 'insideEndTop' }, lineStyle: { color: '#dc2626', type: 'dashed' } } : null,
+    f.stop_loss ? { yAxis: f.stop_loss, label: { formatter: '止损', position: 'insideEndTop' }, lineStyle: { color: '#16a34a', type: 'dashed' } } : null,
+    er.low ? { yAxis: er.low, label: { formatter: '买入下沿', position: 'insideEndTop' }, lineStyle: { color: '#2563eb', type: 'dotted' } } : null,
+    er.high ? { yAxis: er.high, label: { formatter: '买入上沿', position: 'insideEndTop' }, lineStyle: { color: '#2563eb', type: 'dotted' } } : null,
+  ].filter(Boolean);
+
+  chart.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: 60, right: 90, top: 20, bottom: 40 },
+    xAxis: { type: 'category', data: series ? series.map(x => x.date) : [pm.start_date, pm.end_date],
+             axisLabel: { color: '#6b7280', fontSize: 11 } },
+    yAxis: { type: 'value', scale: true, axisLabel: { color: '#6b7280', fontSize: 11 },
+             splitLine: { lineStyle: { color: '#f3f4f6' } } },
+    series: [{
+      type: 'line', showSymbol: false,
+      data: series ? series.map(x => x.close) : [null, null],
+      lineStyle: { width: 1.8, color: '#2563eb' },
+      markLine: { silent: true, symbol: 'none', data: markLines,
+                  label: { fontSize: 11 } }
+    }]
+  }, true);
+}
+
+function renderRadar(dims) {
+  const labels = { valuation:'估值', growth:'成长', quality:'质量', momentum:'动量', risk:'风险', sentiment:'AI情绪' };
+  const chart = CHARTS.radar || (CHARTS.radar = echarts.init($('radarChart')));
+  const keys = Object.keys(labels);
+  chart.setOption({
+    radar: {
+      indicator: keys.map(k => ({ name: labels[k], max: 100 })),
+      radius: '62%', axisName: { color: '#6b7280', fontSize: 12 },
+      splitLine: { lineStyle: { color: '#e5e7eb' } },
+      splitArea: { areaStyle: { color: ['#fafafa', '#fff'] } }
+    },
+    series: [{
+      type: 'radar',
+      data: [{ value: keys.map(k => dims[k] ?? 0), name: '评分',
+               areaStyle: { color: 'rgba(37,99,235,.25)' },
+               lineStyle: { color: '#2563eb', width: 2 },
+               itemStyle: { color: '#2563eb' } }]
+    }]
+  }, true);
+}
+
+// ============================================================
+// 新闻
+// ============================================================
+async function loadNews() {
+  const q = $('newsQ').value.trim();
+  if (!q) return;
+  hide('newsResult'); hide('newsError'); show('newsLoading');
+  try {
+    const days = $('newsDays').value;
+    const ch = $('aiModel').value;
+    let url = `/api/v2/news/summary?q=${encodeURIComponent(q)}&days=${days}&limit=20&use_ai=${!!ch}`;
+    if (ch) url += `&channel_id=${ch}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    renderNews(d);
+    show('newsResult');
+  } catch (e) {
+    $('newsError').textContent = '❌ ' + e.message;
+    show('newsError');
+  } finally {
+    hide('newsLoading');
+  }
+}
+
+function renderNews(d) {
+  const s = d.summary || {};
+  const sentCls = s.overall_sentiment === '利好' ? 'sent-pos'
+                : s.overall_sentiment === '利空' ? 'sent-neg' : 'sent-neu';
+
+  let html = `
+  <div class="card">
+    <div class="card-title">AI 情报归纳（${s.method === 'ai' ? 'AI' : '规则引擎'}）</div>
+    <div class="sentiment">
+      <span class="sent-badge ${sentCls}">${esc(s.overall_sentiment || '中性')}</span>
+      <span style="font-size:13px;color:#6b7280">情绪分数 ${s.sentiment_score ?? 0}</span>
+      <span style="font-size:13px;color:#6b7280">可信度 ${((s.credibility||0)*100).toFixed(0)}%</span>
+      <span style="font-size:13px;color:#6b7280">共 ${d.count} 条新闻</span>
+    </div>
+    <div style="margin-top:12px;font-size:14.5px">${esc(s.summary || '')}</div>
+    ${s.hot_sectors && s.hot_sectors.length ? `
+      <div style="margin-top:12px;font-size:13px;color:#6b7280">热点板块：
+        ${s.hot_sectors.map(x => `<span class="mkt-tag">${esc(x)}</span>`).join(' ')}</div>` : ''}
+    ${s.related_symbols && s.related_symbols.length ? `
+      <div style="margin-top:10px;font-size:13px;color:#6b7280">相关个股：
+        ${s.related_symbols.map(x => `<span class="mkt-tag" style="cursor:pointer"
+          onclick="switchTab('analysis');analyze('${x.symbol}')">${esc(x.name)} ${x.symbol}</span>`).join(' ')}</div>` : ''}
+    ${s.ai_error ? `<div class="warn">AI不可用，已降级为规则引擎：${esc(s.ai_error)}</div>` : ''}
+  </div>`;
+
+  if (s.key_events && s.key_events.length) {
+    html += `<div class="card"><div class="card-title">关键事件</div>
+      <table><thead><tr><th>事件</th><th>影响</th><th>板块</th><th>情绪</th></tr></thead><tbody>
+      ${s.key_events.map(e => `<tr>
+        <td>${esc(e.event)}</td><td>${esc(e.impact)}</td>
+        <td>${(e.sectors||[]).map(x => esc(x)).join('、')}</td>
+        <td>${esc(e.sentiment)}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  }
+
+  html += `<div class="card"><div class="card-title">新闻列表</div>`;
+  html += d.items.map(it => `
+    <div class="news-item">
+      <div class="t"><a href="${esc(it.url)}" target="_blank">${esc(it.title)}</a></div>
+      <div class="m"><span>${esc(it.published_at)}</span><span>${esc(it.media || it.source)}</span></div>
+      ${it.summary ? `<div class="d">${esc(it.summary.slice(0, 160))}…</div>` : ''}
+    </div>`).join('');
+  html += `</div>`;
+
+  $('newsResult').innerHTML = html;
+}
+
+function toggleExt() {
+  const p = $('extPanel');
+  if (p) p.classList.toggle('hidden');
+}
+
+function extRow(label, value, hint) {
+  if (value === null || value === undefined) return '';
+  return `<div class="metric" title="${esc(hint || '')}">
+    <div class="k">${esc(label)}</div>
+    <div class="v" style="font-size:15px">${esc(String(value))}</div>
+    ${hint ? `<div style="font-size:10.5px;color:#9ca3af;margin-top:2px">${esc(hint)}</div>` : ''}
+  </div>`;
+}
+
+function renderExtended(e) {
+  const kdj = e.kdj || {}, bb = e.bollinger || {}, adx = e.adx || {}, obv = e.obv || {};
+  const groups = [
+    ['统计特征', [
+      extRow('Hurst指数', e.hurst, '>0.5趋势持续'),
+      extRow('收益自相关', e.autocorr_1, '>0动量效应'),
+      extRow('方差比(5日)', e.variance_ratio_5, '>1趋势性'),
+      extRow('均值回归半衰期', e.half_life_days, '天'),
+      extRow('JB统计量', e.jarque_bera, e.is_normal_dist === false ? '非正态' : '接近正态'),
+      extRow('最长连涨', e.max_win_streak, '天'),
+      extRow('最长连跌', e.max_loss_streak, '天'),
+    ]],
+    ['技术指标', [
+      extRow('KDJ-K', kdj.k, kdj.signal),
+      extRow('KDJ-D', kdj.d, ''),
+      extRow('布林 %B', bb.pct_b, '>1突破上轨'),
+      extRow('布林带宽', bb.bandwidth, '收窄预示变盘'),
+      extRow('ADX', adx.adx, adx.trend),
+      extRow('+DI / -DI', adx.plus_di !== null && adx.minus_di !== null ? adx.plus_di + ' / ' + adx.minus_di : null, ''),
+      extRow('OBV', obv.obv_trend, obv.divergence ? '量价背离' : ''),
+      extRow('CCI(20)', e.cci_20, '>100强势'),
+      extRow('Williams %R', e.williams_r, '>-20超买'),
+      extRow('量比', e.volume_ratio, '>1.5放量'),
+      extRow('Amihud', e.amihud, '越大越难买卖'),
+    ]],
+    ['相对基准', [
+      extRow('相关性', e.correlation, '与基准同涨同跌'),
+      extRow('R²', e.r_squared, '基准解释度'),
+      extRow('上行捕获率', e.up_capture, '基准涨1%时'),
+      extRow('下行捕获率', e.down_capture, '基准跌1%时'),
+    ]],
+    ['行为特征', [
+      extRow('最强月份', e.best_month, '季节性'),
+      extRow('最弱月份', e.worst_month, ''),
+      extRow('最强星期', e.best_weekday, '星期效应'),
+      extRow('最弱星期', e.worst_weekday, ''),
+      extRow('疼痛指数', e.pain_index, '回撤均方根'),
+      extRow('恢复因子', e.recovery_factor, '总收益/回撤'),
+      extRow('尾部比率', e.tail_ratio, '95分位/5分位'),
+      extRow('M²测度', e.m2, '波动率调整后收益'),
+    ]],
+  ];
+
+  return groups.map(([title, rows]) => {
+    const html = rows.filter(Boolean).join('');
+    if (!html) return '';
+    return `<div style="margin-bottom:14px">
+      <div style="font-size:12.5px;color:#6b7280;margin-bottom:8px">${title}</div>
+      <div class="metrics" style="margin-top:0">${html}</div>
+    </div>`;
+  }).join('') || '<div class="hint">暂无扩展指标数据</div>';
+}
+
+// ============================================================
+// 选股筛选
+// ============================================================
+let SECTORS_LOADED = false;
+
+async function loadSectors() {
+  if (SECTORS_LOADED) return;
+  try {
+    const r = await fetch('/api/v2/sectors');
+    const d = await r.json();
+    $('universeSector').innerHTML =
+      '<option value="">全部板块（约100只）</option>' +
+      d.sectors.map(s => `<option value="${s}">${s}</option>`).join('');
+    SECTORS_LOADED = true;
+    updateUniverseCount();
+  } catch (e) { console.error(e); }
+}
+
+async function updateUniverseCount() {
+  const sector = $('universeSector').value;
+  try {
+    const r = await fetch('/api/v2/universe' + (sector ? `?sector=${encodeURIComponent(sector)}` : ''));
+    const d = await r.json();
+    $('universeCount').textContent = `候选 ${d.count} 只`;
+    window.CURRENT_UNIVERSE = d.symbols.map(x => x.symbol);
+  } catch (e) { $('universeCount').textContent = ''; }
+}
+
+$('universeSector') && $('universeSector').addEventListener('change', updateUniverseCount);
+
+function clearScreenConditions() {
+  ['fPeMax','fRoeMin','fCapMin','fMomMin','fDdMax','fScoreMin']
+    .forEach(id => $(id).value = '');
+}
+
+function numOrNull(id) {
+  const v = $(id).value.trim();
+  if (v === '') return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+async function runScreen() {
+  if (!window.CURRENT_UNIVERSE || !window.CURRENT_UNIVERSE.length) {
+    await updateUniverseCount();
+  }
+  const symbols = window.CURRENT_UNIVERSE || [];
+  if (!symbols.length) { alert('候选池为空'); return; }
+
+  const conditions = {};
+  const pe = numOrNull('fPeMax');      if (pe !== null) conditions.pe_max = pe;
+  const roe = numOrNull('fRoeMin');    if (roe !== null) conditions.roe_min = roe;
+  const cap = numOrNull('fCapMin');    if (cap !== null) conditions.market_cap_min = cap;
+  const mom = numOrNull('fMomMin');    if (mom !== null) conditions.mom_3m_min = mom / 100;
+  const dd = numOrNull('fDdMax');      if (dd !== null) conditions.max_drawdown_max = dd / 100;
+  const sc = numOrNull('fScoreMin');   if (sc !== null) conditions.score_min = sc;
+
+  hide('screenResult'); hide('screenError'); show('screenLoading');
+  $('screenBtn').disabled = true;
+
+  try {
+    const r = await fetch('/api/v2/screen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symbols,
+        profile: $('profile').value,
+        conditions,
+      })
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e.detail || `HTTP ${r.status}`);
+    }
+    const d = await r.json();
+    renderScreen(d);
+    show('screenResult');
+  } catch (e) {
+    $('screenError').textContent = '❌ ' + e.message;
+    show('screenError');
+  } finally {
+    hide('screenLoading');
+    $('screenBtn').disabled = false;
+  }
+}
+
+function renderScreen(d) {
+  if (!d.results.length) {
+    $('screenResult').innerHTML = `<div class="card">
+      <div class="warn">共评估 ${d.evaluated} 只，没有满足条件的标的。
+      试试放宽条件（比如把 ROE 下限降到 10、回撤上限放到 -50）。</div>
+      ${d.errors.length ? `<div style="font-size:12px;color:#9ca3af;margin-top:8px">
+        评估失败 ${d.errors.length} 只：${d.errors.slice(0,10).join(', ')}</div>` : ''}
+    </div>`;
+    return;
+  }
+
+  const rows = d.results.map(r => {
+    const dims = r.dimensions || {};
+    return `<tr onclick="switchTab('analysis');analyze('${r.symbol}')" style="cursor:pointer">
+      <td><b>${esc(r.name)}</b><br><span style="font-size:11.5px;color:#9ca3af">${r.symbol}</span></td>
+      <td><b style="font-size:16px;color:${r.composite >= 65 ? '#16a34a' : r.composite >= 50 ? '#2563eb' : '#dc2626'}">${r.composite}</b>
+        <br><span style="font-size:11px;color:#9ca3af">${esc(r.grade)}</span></td>
+      <td>${num(r.price)}</td>
+      <td>${r.pe_ttm !== null ? num(r.pe_ttm, 1) : '—'}</td>
+      <td>${r.roe !== null ? num(r.roe, 1) + '%' : '—'}</td>
+      <td class="${cls(r.mom_3m)}">${r.mom_3m !== null ? pct(r.mom_3m) : '—'}</td>
+      <td class="neg">${r.max_drawdown !== null ? pct(r.max_drawdown) : '—'}</td>
+      <td>${r.market_cap_yi !== null ? num(r.market_cap_yi, 0) : '—'}</td>
+      <td style="font-size:11.5px;color:#6b7280">
+        ${dims.valuation !== null && dims.valuation !== undefined ? '估' + dims.valuation : ''}
+        ${dims.quality !== null && dims.quality !== undefined ? ' 质' + dims.quality : ''}
+        ${dims.momentum !== null && dims.momentum !== undefined ? ' 动' + dims.momentum : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  $('screenResult').innerHTML = `
+  <div class="card">
+    <div class="card-title">筛选结果</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:12px">
+      候选 ${d.total} 只 → 成功评估 ${d.evaluated} 只 → <b style="color:#2563eb">命中 ${d.passed} 只</b>
+      ${d.errors.length ? `　评估失败 ${d.errors.length} 只` : ''}
+      　（点击任意一行进入详细分析）
+    </div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th>标的</th><th>综合分</th><th>现价</th><th>PE</th><th>ROE</th>
+        <th>3月动量</th><th>最大回撤</th><th>市值(亿)</th><th>分项</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+// ============================================================
+// 设置
+// ============================================================
+async function loadChannels() {
+  try {
+    const r = await fetch('/api/v2/channels');
+    const d = await r.json();
+    updateModelSelect(d.channels);
+    if (!d.channels.length) {
+      $('channelList').innerHTML = '<div style="color:#6b7280;font-size:13.5px">还没有配置渠道。填下面的表单添加一个。</div>';
+      return;
+    }
+    $('channelList').innerHTML = `<table>
+      <thead><tr><th>名称</th><th>协议</th><th>模型</th><th>地址</th><th>密钥</th><th>能力</th><th></th></tr></thead>
+      <tbody>${d.channels.map(c => `
+        <tr>
+          <td><b>${esc(c.name)}</b>${c.is_default ? ' <span class="mkt-tag">默认</span>' : ''}</td>
+          <td>${c.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI'}</td>
+          <td>${esc(c.model)}</td>
+          <td style="font-size:12px;color:#6b7280">${esc(c.base_url)}</td>
+          <td style="font-size:12px">${esc(c.key_masked)}</td>
+          <td style="font-size:12px">${capText(c.capabilities)}</td>
+          <td style="white-space:nowrap">
+            <button class="ghost sm" onclick="probeChannel(${c.id})">探测</button>
+            <button class="danger sm" onclick="delChannel(${c.id})">删除</button>
+          </td>
+        </tr>`).join('')}</tbody></table>`;
+  } catch (e) { $('channelList').innerHTML = `<div class="err">加载失败: ${e.message}</div>`; }
+}
+
+function capText(c) {
+  if (!c || Object.keys(c).length === 0) return '未探测';
+  const parts = [];
+  parts.push(c.json_mode ? 'JSON✓' : 'JSON✗');
+  parts.push(c.models_ok ? '模型列表✓' : '模型列表✗');
+  if (c.latency_ms) parts.push(c.latency_ms + 'ms');
+  if (c.error) parts.push('⚠');
+  return parts.join(' ');
+}
+
+function applyPreset() {
+  const key = $('preset').value;
+  const p = (window.PRESETS || []).find(x => x.key === key);
+  if (!p) return;
+  $('chBase').value = p.base_url || '';
+  $('chModel').value = p.model || '';
+  $('chProtocol').value = p.protocol || 'openai';
+  $('chName').value = p.label || '';
+}
+
+async function addChannel() {
+  const body = {
+    name: $('chName').value.trim() || '未命名渠道',
+    base_url: $('chBase').value.trim(),
+    model: $('chModel').value.trim(),
+    api_key: $('chKey').value,
+    protocol: $('chProtocol').value,
+  };
+  if (!body.base_url || !body.model) {
+    $('chMsg').innerHTML = '<div class="err">接口地址和模型名必填</div>';
+    return;
+  }
+  try {
+    const r = await fetch('/api/v2/channels', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    $('chMsg').innerHTML = `<div class="ok">已保存（id=${d.id}）。点"探测"测试能力。</div>`;
+    $('chKey').value = '';
+    loadChannels();
+  } catch (e) {
+    $('chMsg').innerHTML = `<div class="err">保存失败: ${e.message}</div>`;
+  }
+}
+
+async function probeChannel(id) {
+  $('chMsg').innerHTML = '<div class="loading"><div class="spinner"></div>探测中…</div>';
+  try {
+    const r = await fetch(`/api/v2/channels/${id}/probe`, { method: 'POST' });
+    const d = await r.json();
+    const c = d.capabilities;
+    $('chMsg').innerHTML = `<div class="${c.error ? 'warn' : 'ok'}">
+      探测结果：模型列表=${c.models_ok} · system角色=${c.system_role} ·
+      JSON模式=${c.json_mode} · 延迟=${c.latency_ms}ms
+      ${c.error ? '<br>错误：' + esc(c.error) : ''}</div>`;
+    loadChannels();
+  } catch (e) {
+    $('chMsg').innerHTML = `<div class="err">探测失败: ${e.message}</div>`;
+  }
+}
+
+async function delChannel(id) {
+  if (!confirm('确定删除这个渠道？')) return;
+  await fetch(`/api/v2/channels/${id}`, { method: 'DELETE' });
+  loadChannels();
+}
+
+async function loadUsage() {
+  try {
+    const r = await fetch('/api/v2/usage?days=7');
+    const d = await r.json();
+    if (!d.usage.length) {
+      $('usageBox').innerHTML = '<div style="color:#6b7280;font-size:13.5px">暂无调用记录</div>';
+      return;
+    }
+    $('usageBox').innerHTML = `<table>
+      <thead><tr><th>渠道ID</th><th>调用次数</th><th>成功</th><th>平均延迟</th><th>输入tokens</th><th>输出tokens</th></tr></thead>
+      <tbody>${d.usage.map(u => `<tr>
+        <td>${u.channel_id ?? '—'}</td><td>${u.calls}</td><td>${u.ok_calls ?? 0}</td>
+        <td>${(u.avg_ms||0).toFixed(0)}ms</td><td>${u.pt ?? 0}</td><td>${u.ct ?? 0}</td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch (e) {
+    $('usageBox').innerHTML = `<div class="err">${e.message}</div>`;
+  }
+}
+
+// 点击空白处收起搜索建议
+document.addEventListener('click', e => {
+  if (!e.target.closest('.suggest')) hide('suggestList');
+});
+
+window.addEventListener('resize', () => Object.values(CHARTS).forEach(c => c && c.resize()));
+
+// 心跳：告诉后端"窗口还开着"。关闭窗口后90秒后端自动退出。
+setInterval(() => { fetch('/api/health').catch(() => {}); }, 10000);
+
+init();
+</script>
+</body>
+</html>

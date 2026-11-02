@@ -1,0 +1,31 @@
+# 量化终端 v2 依赖清单
+#
+# 安装：
+#   pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+#
+# 各库作用：
+#   pandas  : 表格数据处理（金融分析事实标准）
+#   numpy   : 数值计算基础库
+#   requests: 抓行情/调 AI 用的 HTTP 客户端
+#   fastapi : 本地服务框架
+#   uvicorn : ASGI 服务器（真正监听端口的程序）
+#   PyQt6   : 独立桌面窗口 + 内嵌 Chromium 内核
+#
+# ⚠️ 版本锁定说明：
+#   PyQt6 和 PyQt6-WebEngine 版本必须匹配，否则报
+#   "DLL load failed while importing QtWebEngineWidgets"。
+#   PyQt6-WebEngine 最新只到 6.11.0，所以 PyQt6 也必须锁在 6.11 系列。
+#   不要写成 PyQt6>=6.11 ——那样会装到 6.12，直接崩。
+
+# ---- 核心 ----
+pandas>=2.0
+numpy>=1.24
+requests>=2.31
+fastapi>=0.110
+uvicorn[standard]>=0.27
+
+# ---- 独立桌面窗口（内嵌 Chromium，不依赖系统浏览器）----
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.2
+PyQt6-WebEngine==6.11.0
+PyQt6-WebEngine-Qt6==6.11.2

@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量化分析平台 · 基金诊断</title>
+<script src="/static/vendor/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#f5f6fa; --card:#ffffff; --text:#1a1d26; --muted:#6b7280;
+    --primary:#2563eb; --primary-dark:#1d4ed8; --green:#16a34a; --red:#dc2626;
+    --border:#e5e7eb; --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.6; padding-bottom:60px;
+  }
+  .container{max-width:1180px;margin:0 auto;padding:0 20px}
+
+  /* 顶部 */
+  header{background:#fff;border-bottom:1px solid var(--border);padding:18px 0;margin-bottom:24px}
+  .header-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  .logo{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:700}
+  .logo-badge{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#2563eb,#7c3aed);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700}
+  .tag{font-size:12px;color:var(--muted);background:var(--bg);padding:3px 9px;border-radius:20px}
+
+  /* 搜索区 */
+  .search-card{background:var(--card);border-radius:14px;padding:22px;box-shadow:var(--shadow);margin-bottom:20px}
+  .search-row{display:flex;gap:10px;flex-wrap:wrap}
+  input[type=text]{
+    flex:1;min-width:200px;padding:11px 15px;border:1px solid var(--border);border-radius:9px;
+    font-size:15px;outline:none;transition:.2s;font-family:inherit
+  }
+  input[type=text]:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+  button{
+    padding:11px 22px;border:none;border-radius:9px;background:var(--primary);color:#fff;
+    font-size:15px;font-weight:600;cursor:pointer;transition:.2s;font-family:inherit
+  }
+  button:hover{background:var(--primary-dark)}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  .quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center}
+  .quick span{font-size:13px;color:var(--muted)}
+  .chip{
+    padding:5px 13px;border-radius:20px;background:#eef2ff;color:#4338ca;font-size:13px;
+    cursor:pointer;border:1px solid transparent;transition:.2s
+  }
+  .chip:hover{background:#e0e7ff;border-color:#c7d2fe}
+
+  /* 卡片 */
+  .card{background:var(--card);border-radius:14px;padding:22px;box-shadow:var(--shadow);margin-bottom:20px}
+  .card-title{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+  .card-title::before{content:"";width:4px;height:16px;background:var(--primary);border-radius:2px}
+
+  /* 基金头部信息 */
+  .fund-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:8px}
+  .fund-name{font-size:22px;font-weight:700}
+  .fund-meta{font-size:13px;color:var(--muted);margin-top:4px}
+  .score-box{text-align:center;min-width:120px}
+  .score-num{font-size:38px;font-weight:800;line-height:1.1;color:var(--primary)}
+  .score-label{font-size:13px;color:var(--muted)}
+
+  /* 指标网格 */
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:20px}
+  .metric{background:var(--bg);border-radius:11px;padding:15px}
+  .metric-label{font-size:12px;color:var(--muted);margin-bottom:5px}
+  .metric-value{font-size:21px;font-weight:700;font-variant-numeric:tabular-nums}
+  .metric-sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .pos{color:var(--red)}   /* A股习惯：红涨绿跌 */
+  .neg{color:var(--green)}
+  .neutral{color:var(--text)}
+
+  /* 图表 */
+  .chart{width:100%;height:380px}
+  .chart-sm{width:100%;height:220px}
+
+  /* 状态提示 */
+  .hint{padding:16px;text-align:center;color:var(--muted);font-size:14px}
+  .error{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:10px;padding:13px 16px;font-size:14px}
+  .loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:40px;color:var(--muted)}
+  .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--primary);
+    border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .hidden{display:none !important}
+
+  /* 免责声明 */
+  .disclaimer{margin-top:30px;padding:16px 18px;background:#fffbeb;border:1px solid #fde68a;
+    border-radius:11px;font-size:12.5px;color:#92400e;line-height:1.7}
+
+  /* 对比列表 */
+  .legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container header-inner">
+    <div class="logo">
+      <div class="logo-badge">量</div>
+      <div>量化分析平台</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span class="tag">A股 · 公募基金</span>
+      <span class="tag">MVP v0.1</span>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- 搜索 -->
+  <div class="search-card">
+    <div class="search-row">
+      <input type="text" id="codeInput" placeholder="输入6位基金代码，例如 110022" maxlength="6"
+             onkeydown="if(event.key==='Enter') analyze()">
+      <button id="analyzeBtn" onclick="analyze()">开始诊断</button>
+    </div>
+    <div class="quick">
+      <span>试试：</span>
+      <div class="chip" onclick="quickPick('110022')">110022 易方达消费</div>
+      <div class="chip" onclick="quickPick('161725')">161725 招商中证白酒</div>
+      <div class="chip" onclick="quickPick('005827')">005827 易方达蓝筹精选</div>
+      <div class="chip" onclick="quickPick('000961')">000961 天弘沪深300</div>
+    </div>
+  </div>
+
+  <!-- 加载/错误 -->
+  <div id="loading" class="loading hidden"><div class="spinner"></div><span>正在获取并计算数据…（首次查询需抓取全历史，约1-2秒）</span></div>
+  <div id="errorBox" class="error hidden"></div>
+
+  <!-- 结果区 -->
+  <div id="result" class="hidden">
+
+    <!-- 概况 -->
+    <div class="card">
+      <div class="fund-head">
+        <div>
+          <div class="fund-name" id="fundName">—</div>
+          <div class="fund-meta" id="fundMeta">—</div>
+        </div>
+        <div class="score-box">
+          <div class="score-num" id="scoreNum">—</div>
+          <div class="score-label" id="scoreGrade">综合评分</div>
+        </div>
+      </div>
+
+      <div class="metrics" id="metricGrid"></div>
+    </div>
+
+    <!-- 净值曲线 -->
+    <div class="card">
+      <div class="card-title">单位净值走势</div>
+      <div id="navChart" class="chart"></div>
+    </div>
+
+    <!-- 回撤 -->
+    <div class="card">
+      <div class="card-title">回撤走势（水下曲线）</div>
+      <div class="hint" style="padding:0 0 10px 0;text-align:left;font-size:12.5px">
+        曲线越深表示当时亏损越大。这是判断"自己能不能拿得住"最直观的图。
+      </div>
+      <div id="ddChart" class="chart-sm"></div>
+    </div>
+
+    <!-- 评分拆解 -->
+    <div class="card">
+      <div class="card-title">评分拆解</div>
+      <div id="scoreChart" class="chart-sm"></div>
+    </div>
+  </div>
+
+  <!-- 对比 -->
+  <div class="card">
+    <div class="card-title">多基金对比</div>
+    <div class="search-row">
+      <input type="text" id="compareInput" placeholder="多个基金代码，用逗号分隔，例如 110022,161725,000961">
+      <button onclick="compare()">对比</button>
+    </div>
+    <div class="hint" style="text-align:left;font-size:12.5px;padding:10px 0 0">
+      所有曲线都归一化到 1（假设每只基金都从 1 元开始），这样才能公平比较涨跌。
+    </div>
+    <div id="compareChart" class="chart" style="margin-top:12px"></div>
+  </div>
+
+  <div class="disclaimer">
+    <strong>免责声明：</strong>本工具仅提供公开数据的统计与可视化，所有指标与评分均为历史数据的客观计算结果，
+    <strong>不构成任何投资建议或收益承诺</strong>。基金过往业绩不代表未来表现，投资有风险，决策需谨慎。
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 全局状态
+// ============================================================
+let navChartInstance = null;
+let ddChartInstance = null;
+let scoreChartInstance = null;
+let compareChartInstance = null;
+
+const COLORS = ['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2'];
+
+// ============================================================
+// 工具函数
+// ============================================================
+function pct(v, digits = 2){
+  if (v === null || v === undefined) return '—';
+  return (v * 100).toFixed(digits) + '%';
+}
+function fmt(v, digits = 2){
+  if (v === null || v === undefined) return '—';
+  return Number(v).toFixed(digits);
+}
+function cls(v){
+  if (v > 0) return 'pos';
+  if (v < 0) return 'neg';
+  return 'neutral';
+}
+function show(id){ document.getElementById(id).classList.remove('hidden'); }
+function hide(id){ document.getElementById(id).classList.add('hidden'); }
+
+function quickPick(code){
+  document.getElementById('codeInput').value = code;
+  analyze();
+}
+
+// ============================================================
+// 主流程：诊断一只基金
+// ============================================================
+async function analyze(){
+  const code = document.getElementById('codeInput').value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    showError('请输入6位数字的基金代码，例如 110022');
+    return;
+  }
+
+  hide('errorBox');
+  hide('result');
+  show('loading');
+  document.getElementById('analyzeBtn').disabled = true;
+
+  try{
+    const resp = await fetch(`/api/funds/${code}`);
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `请求失败 (HTTP ${resp.status})`);
+    }
+    const data = await resp.json();
+    // 注意顺序：必须先把结果区显示出来，再初始化图表。
+    // 否则 ECharts 在 display:none 的容器里初始化，会得到宽度 0，图形被压成一条竖线。
+    show('result');
+    renderFund(data);
+    // 容器刚从隐藏变可见，通知图表重新测量尺寸
+    [navChartInstance, ddChartInstance, scoreChartInstance]
+      .forEach(c => c && c.resize());
+  } catch(e){
+    showError(e.message);
+  } finally {
+    hide('loading');
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+}
+
+function showError(msg){
+  const box = document.getElementById('errorBox');
+  box.textContent = '❌ ' + msg;
+  box.classList.remove('hidden');
+}
+
+// ============================================================
+// 渲染
+// ============================================================
+function renderFund(data){
+  const {info, metrics, score, nav_series, drawdown_series} = data;
+
+  // 头部
+  document.getElementById('fundName').textContent = info.name || info.code;
+  document.getElementById('fundMeta').textContent =
+    `${info.code} · ${info.fund_type || '未知类型'} · ${metrics.start_date} 至 ${metrics.end_date} · ${metrics.days} 个交易日`;
+
+  document.getElementById('scoreNum').textContent = score.total_score;
+  document.getElementById('scoreGrade').textContent = '综合评分 · ' + score.grade;
+
+  // 指标卡片
+  const cards = [
+    {label:'区间总收益', value: pct(metrics.total_return), cls: cls(metrics.total_return)},
+    {label:'年化收益', value: pct(metrics.annual_return), cls: cls(metrics.annual_return)},
+    {label:'最大回撤', value: pct(metrics.max_drawdown), cls: 'neg'},
+    {label:'年化波动率', value: pct(metrics.annual_volatility), cls: 'neutral'},
+    {label:'夏普比率', value: fmt(metrics.sharpe), cls: cls(metrics.sharpe)},
+    {label:'索提诺比率', value: fmt(metrics.sortino), cls: cls(metrics.sortino)},
+    {label:'卡玛比率', value: fmt(metrics.calmar), cls: cls(metrics.calmar)},
+    {label:'日胜率', value: pct(metrics.win_rate, 1), cls: 'neutral'},
+    {label:'最新净值', value: fmt(metrics.latest_nav, 4), cls: 'neutral'},
+    {label:'单日最大涨幅', value: pct(metrics.best_day), cls: 'pos'},
+    {label:'单日最大跌幅', value: pct(metrics.worst_day), cls: 'neg'},
+  ];
+  document.getElementById('metricGrid').innerHTML = cards.map(c => `
+    <div class="metric">
+      <div class="metric-label">${c.label}</div>
+      <div class="metric-value ${c.cls}">${c.value}</div>
+    </div>`).join('');
+
+  // 净值图
+  navChartInstance = navChartInstance || echarts.init(document.getElementById('navChart'));
+  navChartInstance.setOption({
+    tooltip:{
+      trigger:'axis',
+      formatter: p => `${p[0].axisValue}<br/>净值：<b>${p[0].data}</b>`
+    },
+    grid:{left:56, right:24, top:24, bottom:44},
+    xAxis:{
+      type:'category',
+      data: nav_series.map(d => d.date),
+      axisLabel:{color:'#6b7280', fontSize:11},
+      axisLine:{lineStyle:{color:'#e5e7eb'}}
+    },
+    yAxis:{
+      type:'value', scale:true,
+      axisLabel:{color:'#6b7280', fontSize:11},
+      splitLine:{lineStyle:{color:'#f3f4f6'}}
+    },
+    dataZoom:[{type:'inside'}, {type:'slider', height:18, bottom:8}],
+    series:[{
+      name:'单位净值', type:'line', showSymbol:false,
+      data: nav_series.map(d => d.nav),
+      lineStyle:{width:1.8, color:'#2563eb'},
+      areaStyle:{
+        color: new echarts.graphic.LinearGradient(0,0,0,1,[
+          {offset:0, color:'rgba(37,99,235,.22)'},
+          {offset:1, color:'rgba(37,99,235,.01)'}
+        ])
+      }
+    }]
+  }, true);
+
+  // 回撤图
+  ddChartInstance = ddChartInstance || echarts.init(document.getElementById('ddChart'));
+  ddChartInstance.setOption({
+    tooltip:{
+      trigger:'axis',
+      formatter: p => `${p[0].axisValue}<br/>回撤：<b>${(p[0].data*100).toFixed(2)}%</b>`
+    },
+    grid:{left:56, right:24, top:20, bottom:34},
+    xAxis:{
+      type:'category', data: drawdown_series.map(d => d.date),
+      axisLabel:{color:'#6b7280', fontSize:11},
+      axisLine:{lineStyle:{color:'#e5e7eb'}}
+    },
+    yAxis:{
+      type:'value', max:0,
+      axisLabel:{color:'#6b7280', fontSize:11, formatter: v => (v*100).toFixed(0)+'%'},
+      splitLine:{lineStyle:{color:'#f3f4f6'}}
+    },
+    series:[{
+      type:'line', showSymbol:false, data: drawdown_series.map(d => d.dd),
+      lineStyle:{width:1.4, color:'#dc2626'},
+      areaStyle:{color:'rgba(220,38,38,.14)'}
+    }]
+  }, true);
+
+  // 评分拆解（雷达图）
+  scoreChartInstance = scoreChartInstance || echarts.init(document.getElementById('scoreChart'));
+  const bd = score.breakdown;
+  scoreChartInstance.setOption({
+    radar:{
+      indicator: Object.keys(bd).map(k => ({name:k, max:100})),
+      radius:'62%',
+      axisName:{color:'#6b7280', fontSize:12},
+      splitLine:{lineStyle:{color:'#e5e7eb'}},
+      splitArea:{areaStyle:{color:['#fafafa','#fff']}}
+    },
+    series:[{
+      type:'radar',
+      data:[{value:Object.values(bd), name:'评分',
+        areaStyle:{color:'rgba(37,99,235,.25)'},
+        lineStyle:{color:'#2563eb', width:2},
+        itemStyle:{color:'#2563eb'}}]
+    }]
+  }, true);
+}
+
+// ============================================================
+// 多基金对比
+// ============================================================
+async function compare(){
+  const raw = document.getElementById('compareInput').value.trim();
+  const codes = raw.split(/[,，\s]+/).filter(Boolean);
+  if (codes.length < 2){
+    showError('请至少输入两个基金代码进行对比');
+    return;
+  }
+  if (!codes.every(c => /^\d{6}$/.test(c))){
+    showError('基金代码必须是6位数字');
+    return;
+  }
+
+  hide('errorBox');
+  try{
+    const resp = await fetch(`/api/compare?codes=${codes.join(',')}`);
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || '对比失败');
+    }
+    const data = await resp.json();
+
+    compareChartInstance = compareChartInstance || echarts.init(document.getElementById('compareChart'));
+    compareChartInstance.setOption({
+      color: COLORS,
+      tooltip:{trigger:'axis'},
+      legend:{top:0, textStyle:{color:'#6b7280', fontSize:12}},
+      grid:{left:56, right:24, top:44, bottom:44},
+      xAxis:{
+        type:'category',
+        data: data.funds[0].series.map(d => d.date),
+        axisLabel:{color:'#6b7280', fontSize:11},
+        axisLine:{lineStyle:{color:'#e5e7eb'}}
+      },
+      yAxis:{
+        type:'value', scale:true,
+        axisLabel:{color:'#6b7280', fontSize:11},
+        splitLine:{lineStyle:{color:'#f3f4f6'}}
+      },
+      dataZoom:[{type:'inside'}, {type:'slider', height:18, bottom:8}],
+      series: data.funds.map(f => ({
+        name: f.name || f.code,
+        type:'line', showSymbol:false,
+        data: f.series.map(d => d.value),
+        lineStyle:{width:1.7}
+      }))
+    }, true);
+  } catch(e){
+    showError(e.message);
+  }
+}
+
+// 窗口尺寸变化时图表自适应
+window.addEventListener('resize', () => {
+  [navChartInstance, ddChartInstance, scoreChartInstance, compareChartInstance]
+    .forEach(c => c && c.resize());
+});
+</script>
+</body>
+</html>
