@@ -17,6 +17,7 @@ const PAGES = {
   watchlist: { module: './pages/watchlist.js' },
   news:      { module: './pages/news.js' },
   library:   { module: './pages/library.js' },
+  catalog:   { module: './pages/catalog.js' },
   settings:  { module: './pages/settings.js' },
 };
 

@@ -353,6 +353,23 @@ def library(category: str | None = Query(None, description="分类 key"),
     }
 
 
+@router.get("/catalog")
+def catalog():
+    """
+    中国金融产品目录。
+
+    回答「有哪些品种、能不能分析」，和 /library（回答「规则是什么」）互补。
+    每个品种标 full / partial / none，让用户一眼看到能力边界。
+    """
+    from app.library import catalog as cat
+
+    return {
+        "groups": cat.all_groups(),
+        "stats": cat.stats(),
+        "status_meta": cat.STATUS_META,
+    }
+
+
 @router.get("/library/{entry_id}")
 def library_entry(entry_id: str):
     from app.library import knowledge
