@@ -176,6 +176,193 @@ def screen_stocks(body: ScreenIn):
 
 
 # ==================================================================
+# 用户设置
+# ==================================================================
+@router.get("/settings")
+def get_settings():
+    """读取全部设置（未设置过的用默认值）。"""
+    from app.userdata import store
+    return {"settings": store.get_settings(), "defaults": store.DEFAULTS}
+
+
+class SettingsIn(BaseModel):
+    settings: dict = Field(default_factory=dict)
+
+
+@router.put("/settings")
+def update_settings(body: SettingsIn):
+    """局部更新设置。"""
+    from app.userdata import store
+    try:
+        merged = store.set_settings(body.settings)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"settings": merged}
+
+
+# ==================================================================
+# 候选池
+# ==================================================================
+class WatchlistIn(BaseModel):
+    name: str = Field(..., description="池名称")
+    note: str = ""
+
+
+class ItemsIn(BaseModel):
+    symbols: list[str] = Field(default_factory=list, description="标准代码列表")
+    raw_text: str = Field("", description="用户粘贴的原始文本（自动解析）")
+    industry: str = ""
+
+
+class ParseIn(BaseModel):
+    text: str = ""
+
+
+@router.get("/watchlists")
+def list_watchlists():
+    """列出所有候选池（含内置池）。"""
+    from app.userdata import store
+    store.ensure_builtin_watchlist()
+    return {"watchlists": store.list_watchlists()}
+
+
+@router.post("/watchlists")
+def create_watchlist(body: WatchlistIn):
+    from app.userdata import store
+    try:
+        wid = store.create_watchlist(body.name, body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"id": wid, "ok": True}
+
+
+@router.delete("/watchlists/{wid}")
+def delete_watchlist(wid: int):
+    from app.userdata import store
+    try:
+        store.delete_watchlist(wid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.get("/watchlists/{wid}/items")
+def watchlist_items(wid: int):
+    from app.userdata import store
+    items = store.get_watchlist_items(wid)
+
+    grouped: dict[str, list] = {}
+    for it in items:
+        grouped.setdefault(it.get("industry") or "未分类", []).append(it)
+
+    return {"id": wid, "count": len(items), "items": items,
+            "groups": [{"industry": k, "items": v} for k, v in grouped.items()]}
+
+
+@router.post("/watchlists/{wid}/items")
+def add_watchlist_items(wid: int, body: ItemsIn):
+    """
+    往候选池加标的。两种方式：
+        1. symbols: 直接给标准代码
+        2. raw_text: 粘一坨文本自动解析（中文名会走搜索转代码）
+    """
+    from app.markets import registry
+    from app.userdata import store
+
+    added: list[dict] = []
+    unresolved: list[dict] = []
+
+    for s in body.symbols:
+        s = (s or "").strip()
+        if s:
+            added.append({"symbol": s.upper(), "name": "", "industry": body.industry})
+
+    if body.raw_text:
+        parsed = store.parse_symbols(body.raw_text)
+        for it in parsed["ok"]:
+            added.append({"symbol": it["symbol"], "name": "", "industry": body.industry})
+
+        for it in parsed["unknown"]:
+            if it.get("reason") != "name":
+                unresolved.append(it)
+                continue
+            try:
+                hits = registry.search(it["name"], limit=1)
+                if hits:
+                    added.append({"symbol": hits[0]["symbol"],
+                                  "name": hits[0]["name"],
+                                  "industry": body.industry})
+                else:
+                    unresolved.append({"raw": it["raw"], "reason": "没搜到这个名称"})
+            except Exception:  # noqa: BLE001
+                unresolved.append({"raw": it["raw"], "reason": "搜索失败"})
+
+    for it in added:
+        if it["name"]:
+            continue
+        try:
+            snap, _ = registry.get_snapshot(it["symbol"])
+            it["name"] = snap.name or ""
+        except Exception:  # noqa: BLE001
+            pass
+
+    n = store.add_items(wid, added)
+    return {"added": n, "items": added, "unresolved": unresolved}
+
+
+@router.delete("/watchlists/{wid}/items")
+def remove_watchlist_items(wid: int, symbols: str = Query(..., description="逗号分隔")):
+    from app.userdata import store
+    lst = [s.strip() for s in symbols.split(",") if s.strip()]
+    return {"removed": store.remove_items(wid, lst)}
+
+
+@router.post("/watchlists/parse")
+def parse_symbols_preview(body: ParseIn):
+    """预览解析结果（不写库），让用户先看识别得对不对。"""
+    from app.userdata import store
+    return store.parse_symbols(body.text)
+
+
+# ==================================================================
+# 市场百科（知识库）
+# ==================================================================
+@router.get("/library")
+def library(category: str | None = Query(None, description="分类 key"),
+            q: str | None = Query(None, description="搜索关键词")):
+    """
+    中国金融市场知识库。
+
+    纯静态内容，不依赖任何外部接口 —— 断网也能查。
+    每条都带「对量化分析的影响」，这是最实用的一栏。
+    """
+    from app.library import knowledge
+
+    if q:
+        entries = knowledge.search(q)
+    elif category:
+        entries = knowledge.by_category(category)
+    else:
+        entries = knowledge.all_entries()
+
+    return {
+        "categories": knowledge.CATEGORIES,
+        "entries": entries,
+        "stats": knowledge.stats(),
+        "query": {"category": category, "q": q},
+    }
+
+
+@router.get("/library/{entry_id}")
+def library_entry(entry_id: str):
+    from app.library import knowledge
+    for e in knowledge.all_entries():
+        if e["id"] == entry_id:
+            return {"entry": e}
+    raise HTTPException(status_code=404, detail="没有这条知识条目")
+
+
+# ==================================================================
 # AI 渠道管理
 # ==================================================================
 class ChannelIn(BaseModel):

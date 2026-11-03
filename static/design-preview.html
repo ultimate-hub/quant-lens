@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>设计预览 · 量化终端 v2</title>
+<script src="/static/vendor/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#f7f8fa;
+    --surface:#ffffff;
+    --surface-2:#fafbfc;
+    --border:#e8eaed;
+    --border-strong:#d5d8dd;
+    --text:#111827;
+    --text-2:#6b7280;
+    --text-3:#9ca3af;
+    --primary:#4f46e5;
+    --primary-soft:#eef2ff;
+    --up:#e5484d;
+    --down:#12a594;
+    --warn:#d97706;
+    --chart-bg:#0f1620;
+    --radius:16px;
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 4px 12px rgba(16,24,40,.04);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+    background:var(--bg); color:var(--text); font-size:14px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-variant-numeric:tabular-nums; font-feature-settings:"tnum"}
+
+  /* ============ 布局 ============ */
+  .app{display:flex; min-height:100vh}
+
+  /* ---- 侧边栏 ---- */
+  .sidebar{
+    width:208px; background:var(--surface); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; padding:20px 12px; flex-shrink:0;
+  }
+  .brand{display:flex; align-items:center; gap:10px; padding:4px 10px 22px}
+  .brand-mark{
+    width:32px; height:32px; border-radius:9px;
+    background:linear-gradient(135deg,#4f46e5,#7c3aed);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:800; font-size:16px;
+  }
+  .brand-name{font-size:15px; font-weight:700; letter-spacing:-.2px}
+  .brand-sub{font-size:10.5px; color:var(--text-3); letter-spacing:.5px}
+
+  .nav-group{margin-bottom:6px}
+  .nav-label{
+    font-size:10.5px; color:var(--text-3); letter-spacing:.8px;
+    padding:10px 10px 6px; text-transform:uppercase; font-weight:600;
+  }
+  .nav-item{
+    display:flex; align-items:center; gap:10px; padding:9px 10px;
+    border-radius:9px; color:var(--text-2); cursor:pointer;
+    font-size:13.5px; font-weight:500; transition:.15s; margin-bottom:2px;
+  }
+  .nav-item:hover{background:var(--surface-2); color:var(--text)}
+  .nav-item.active{background:var(--primary-soft); color:var(--primary); font-weight:600}
+  .nav-icon{width:17px; height:17px; flex-shrink:0; opacity:.85}
+
+  .sidebar-foot{margin-top:auto; padding:12px 10px 0; border-top:1px solid var(--border)}
+  .ai-pill{
+    display:flex; align-items:center; gap:7px; padding:8px 10px;
+    background:var(--surface-2); border-radius:9px; font-size:12px; color:var(--text-2);
+  }
+  .dot{width:6px; height:6px; border-radius:50%; background:var(--down)}
+
+  /* ---- 主区 ---- */
+  .main{flex:1; min-width:0; display:flex; flex-direction:column}
+
+  /* 顶栏 */
+  .topbar{
+    height:64px; background:var(--surface); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:14px; padding:0 28px; flex-shrink:0;
+  }
+  .search{
+    flex:1; max-width:520px; position:relative;
+  }
+  .search input{
+    width:100%; height:38px; padding:0 14px 0 38px;
+    background:var(--surface-2); border:1px solid var(--border);
+    border-radius:10px; font-size:13.5px; color:var(--text);
+    outline:none; font-family:inherit; transition:.15s;
+  }
+  .search input::placeholder{color:var(--text-3)}
+  .search input:focus{
+    background:#fff; border-color:var(--primary);
+    box-shadow:0 0 0 3px rgba(79,70,229,.08);
+  }
+  .search-icon{
+    position:absolute; left:13px; top:50%; transform:translateY(-50%);
+    width:15px; height:15px; color:var(--text-3); pointer-events:none;
+  }
+  .search-kbd{
+    position:absolute; right:10px; top:50%; transform:translateY(-50%);
+    font-size:10.5px; color:var(--text-3); border:1px solid var(--border);
+    border-radius:5px; padding:1px 5px; background:#fff;
+  }
+
+  .market-chips{display:flex; gap:6px; margin-left:auto}
+  .chip{
+    padding:5px 11px; border-radius:8px; font-size:12px; font-weight:500;
+    color:var(--text-2); background:var(--surface-2); border:1px solid transparent;
+    cursor:pointer; transition:.15s;
+  }
+  .chip.on{background:var(--primary-soft); color:var(--primary); border-color:#ddd8fe}
+
+  .mode-select{
+    height:34px; padding:0 30px 0 12px; border:1px solid var(--border);
+    border-radius:9px; background:#fff; font-size:12.5px; color:var(--text);
+    font-family:inherit; cursor:pointer; outline:none;
+    appearance:none;
+    background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 10px center;
+  }
+
+  /* 内容 */
+  .content{padding:24px 28px 40px; overflow-y:auto}
+
+  /* ============ 卡片 ============ */
+  .card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); box-shadow:var(--shadow);
+  }
+  .card-pad{padding:22px 24px}
+  .card-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 24px; border-bottom:1px solid var(--border);
+  }
+  .card-title{font-size:13px; font-weight:600; color:var(--text); letter-spacing:.2px}
+  .card-sub{font-size:11.5px; color:var(--text-3); font-weight:400}
+
+  /* ============ 标的头部 ============ */
+  .hero{
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:24px; margin-bottom:18px;
+  }
+  .hero-name{font-size:26px; font-weight:800; letter-spacing:-.5px; line-height:1.2}
+  .hero-meta{
+    display:flex; align-items:center; gap:10px; margin-top:8px;
+    font-size:12.5px; color:var(--text-2); flex-wrap:wrap;
+  }
+  .tag{
+    display:inline-flex; align-items:center; gap:4px;
+    padding:2.5px 9px; border-radius:6px; font-size:11.5px; font-weight:600;
+  }
+  .tag-market{background:#eef2ff; color:#4338ca}
+  .tag-neutral{background:#f3f4f6; color:#4b5563}
+  .tag-watch{background:#dbeafe; color:#1e40af}
+  .price-now{font-size:22px; font-weight:800}
+  .price-chg{font-size:13px; font-weight:600; margin-left:6px}
+
+  /* 评分环 */
+  .score-wrap{display:flex; align-items:center; gap:18px}
+  .ring{position:relative; width:104px; height:104px; flex-shrink:0}
+  .ring svg{transform:rotate(-90deg)}
+  .ring-center{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+  }
+  .ring-num{font-size:30px; font-weight:800; letter-spacing:-1px; line-height:1}
+  .ring-lbl{font-size:10.5px; color:var(--text-3); margin-top:2px}
+  .score-detail{font-size:12px; color:var(--text-2); line-height:1.9}
+  .score-detail b{color:var(--text); font-weight:600}
+
+  /* ============ 价格轴 ============ */
+  .axis-card{padding:22px 24px 28px}
+  .axis-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:26px}
+  .axis-track{position:relative; height:74px; margin:0 12px}
+
+  .axis-line{
+    position:absolute; top:30px; left:0; right:0; height:3px;
+    background:linear-gradient(90deg,#12a594 0%,#12a594 22%,#94a3b8 22%,#94a3b8 30%,#4f46e5 30%,#4f46e5 68%,#e5484d 68%,#e5484d 100%);
+    border-radius:2px; opacity:.25;
+  }
+  .axis-seg{position:absolute; top:30px; height:3px; border-radius:2px}
+
+  .axis-mark{position:absolute; top:0; transform:translateX(-50%); text-align:center; width:1px}
+  .axis-mark .stem{width:1px; height:24px; margin:0 auto; background:var(--border-strong)}
+  .axis-mark .pip{
+    width:9px; height:9px; border-radius:50%; background:#fff;
+    border:2.5px solid var(--text-3); margin:2px auto 0; position:relative; z-index:2;
+  }
+  .axis-mark .label{
+    font-size:10.5px; color:var(--text-3); white-space:nowrap;
+    position:absolute; top:44px; left:50%; transform:translateX(-50%);
+  }
+  .axis-mark .val{
+    font-size:12.5px; font-weight:700; white-space:nowrap;
+    position:absolute; top:58px; left:50%; transform:translateX(-50%);
+  }
+  .axis-mark.now .pip{border-color:var(--text); width:11px; height:11px}
+  .axis-mark.now .val{font-size:14px}
+  .axis-mark.stop .pip{border-color:var(--down)}
+  .axis-mark.stop .val{color:var(--down)}
+  .axis-mark.target .pip{border-color:var(--up)}
+  .axis-mark.target .val{color:var(--up)}
+  .axis-mark.buy .pip{border-color:var(--primary)}
+  .axis-mark.buy .val{color:var(--primary)}
+
+  /* ============ 指标网格 ============ */
+  .grid-2{display:grid; grid-template-columns:340px 1fr; gap:18px}
+  @media(max-width:1100px){.grid-2{grid-template-columns:1fr}}
+
+  .kv-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:1px;
+    background:var(--border); border-radius:12px; overflow:hidden}
+  @media(max-width:1500px){.kv-grid{grid-template-columns:repeat(4,1fr)}}
+  .kv{background:var(--surface); padding:13px 15px}
+  .kv .k{font-size:11px; color:var(--text-3); margin-bottom:4px; white-space:nowrap}
+  .kv .v{font-size:16px; font-weight:700; letter-spacing:-.2px}
+  .v-up{color:var(--up)} .v-down{color:var(--down)}
+
+  /* ============ 图表 ============ */
+  .chart-dark{
+    background:var(--chart-bg); border-radius:0 0 var(--radius) var(--radius);
+    padding:8px 4px 4px;
+  }
+  .chart-dark .chart{width:100%; height:300px}
+
+  /* ============ AI 卡片 ============ */
+  .ai-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media(max-width:900px){.ai-grid{grid-template-columns:1fr}}
+  .ai-block{padding:15px 16px; background:var(--surface-2); border-radius:11px}
+  .ai-block h5{
+    font-size:11.5px; font-weight:700; letter-spacing:.3px; margin-bottom:9px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .ai-block ul{list-style:none}
+  .ai-block li{
+    font-size:12.8px; color:#374151; line-height:1.65;
+    padding:5px 0 5px 15px; position:relative;
+  }
+  .ai-block li::before{
+    content:""; position:absolute; left:2px; top:11px;
+    width:4px; height:4px; border-radius:50%; background:var(--text-3);
+  }
+  .ai-bull li::before{background:var(--up)}
+  .ai-bear li::before{background:var(--down)}
+
+  /* 折叠 */
+  .collapse-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:15px 24px; cursor:pointer; user-select:none;
+  }
+  .collapse-head:hover{background:var(--surface-2)}
+
+  .divider{height:1px; background:var(--border); margin:18px 0}
+
+  /* 免责 */
+  .disclaimer{
+    margin-top:26px; padding:13px 16px; border-radius:11px;
+    background:#fffbeb; border:1px solid #fde68a;
+    font-size:11.5px; color:#92400e; line-height:1.65;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ==================== 侧边栏 ==================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">量</div>
+      <div>
+        <div class="brand-name">量化终端</div>
+        <div class="brand-sub">QUANT TERMINAL</div>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">分析</div>
+      <div class="nav-item active">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+        个股分析
+      </div>
+      <div class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        选股筛选
+      </div>
+      <div class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        我的候选池
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">情报</div>
+      <div class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg>
+        新闻情报
+      </div>
+      <div class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5a2 2 0 012-2h12a2 2 0 012 2v14l-4-3-4 3-4-3-4 3z"/></svg>
+        市场百科
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">系统</div>
+      <div class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+        设置
+      </div>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="ai-pill"><span class="dot"></span> AI 已连接 · DeepSeek</div>
+    </div>
+  </aside>
+
+  <!-- ==================== 主区 ==================== -->
+  <div class="main">
+
+    <!-- 顶栏 -->
+    <header class="topbar">
+      <div class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" placeholder="搜索股票、板块或关键词…">
+        <span class="search-kbd">Ctrl K</span>
+      </div>
+
+      <div class="market-chips">
+        <span class="chip on">沪市</span>
+        <span class="chip on">深市</span>
+        <span class="chip on">港股</span>
+        <span class="chip on">美股</span>
+        <span class="chip">北交所</span>
+      </div>
+
+      <select class="mode-select">
+        <option>均衡型</option>
+        <option>价值型</option>
+        <option>成长型</option>
+      </select>
+    </header>
+
+    <!-- 内容 -->
+    <div class="content">
+
+      <!-- 标的头部 -->
+      <div class="hero">
+        <div>
+          <div class="hero-name">贵州茅台</div>
+          <div class="hero-meta">
+            <span class="tag tag-market">600519.SH</span>
+            <span>沪市 A股</span>
+            <span style="color:var(--border-strong)">|</span>
+            <span class="price-now num">¥1,330.75</span>
+            <span class="price-chg num v-up">+2.31%</span>
+            <span class="tag tag-neutral">中性</span>
+          </div>
+        </div>
+
+        <div class="score-wrap">
+          <div class="score-detail" style="text-align:right">
+            <div>量化 <b class="num">56.6</b></div>
+            <div>AI <b class="num">62.0</b></div>
+            <div style="color:var(--text-3);font-size:11px">置信度 62% · 1-3月</div>
+          </div>
+          <div class="ring">
+            <svg width="104" height="104">
+              <circle cx="52" cy="52" r="45" fill="none" stroke="#eef0f3" stroke-width="8"/>
+              <circle cx="52" cy="52" r="45" fill="none" stroke="#4f46e5" stroke-width="8"
+                      stroke-linecap="round"
+                      stroke-dasharray="282.7"
+                      stroke-dashoffset="120.6"/>
+            </svg>
+            <div class="ring-center">
+              <div class="ring-num num">56.9</div>
+              <div class="ring-lbl">一般</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 价格轴 -->
+      <div class="card axis-card" style="margin-bottom:18px">
+        <div class="axis-head">
+          <div>
+            <div class="card-title">价格锚点</div>
+            <div class="card-sub" style="margin-top:2px">系统计算，AI 只能在这些价位中选择</div>
+          </div>
+          <div style="font-size:11.5px;color:var(--text-3)">风险收益比 <b class="num" style="color:var(--text);font-size:13px">0.66</b></div>
+        </div>
+
+        <div class="axis-track">
+          <!-- 区间条 -->
+          <div class="axis-seg" style="left:0%;width:21%;background:rgba(18,165,148,.14)"></div>
+          <div class="axis-seg" style="left:21%;width:9%;background:rgba(79,70,229,.10)"></div>
+          <div class="axis-seg" style="left:30%;width:38%;background:rgba(148,163,184,.10)"></div>
+          <div class="axis-seg" style="left:68%;width:32%;background:rgba(229,72,77,.10)"></div>
+          <div class="axis-line"></div>
+
+          <!-- 标记点 -->
+          <div class="axis-mark stop" style="left:10%">
+            <div class="stem"></div><div class="pip"></div>
+            <div class="label">止损</div>
+            <div class="val num">1,198.51</div>
+          </div>
+          <div class="axis-mark buy" style="left:25%">
+            <div class="stem"></div><div class="pip"></div>
+            <div class="label">买入区间</div>
+            <div class="val num">1,278~1,302</div>
+          </div>
+          <div class="axis-mark now" style="left:33%">
+            <div class="stem" style="background:var(--text)"></div><div class="pip"></div>
+            <div class="label" style="color:var(--text);font-weight:600">现价</div>
+            <div class="val num">1,330.75</div>
+          </div>
+          <div class="axis-mark target" style="left:82%">
+            <div class="stem"></div><div class="pip"></div>
+            <div class="label">目标价</div>
+            <div class="val num">1,519.05 <span style="font-size:10px;font-weight:500">+14.1%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 雷达 + 指标 -->
+      <div class="grid-2" style="margin-bottom:18px">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">六维度评分</div>
+            <div class="card-sub">均衡型</div>
+          </div>
+          <div id="radar" style="height:300px"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">核心指标</div>
+            <div class="card-sub">共 76 项 · 点击展开全部</div>
+          </div>
+          <div class="card-pad" style="padding-top:16px">
+            <div class="kv-grid">
+              <div class="kv"><div class="k">年化收益</div><div class="v num v-up">13.93%</div></div>
+              <div class="kv"><div class="k">最大回撤</div><div class="v num v-down">-47.53%</div></div>
+              <div class="kv"><div class="k">年化波动</div><div class="v num">27.81%</div></div>
+              <div class="kv"><div class="k">夏普比率</div><div class="v num">0.43</div></div>
+              <div class="kv"><div class="k">索提诺</div><div class="v num">0.68</div></div>
+              <div class="kv"><div class="k">卡玛</div><div class="v num">0.29</div></div>
+              <div class="kv"><div class="k">RSI(14)</div><div class="v num">68.4</div></div>
+              <div class="kv"><div class="k">Beta</div><div class="v num">0.88</div></div>
+              <div class="kv"><div class="k">Alpha</div><div class="v num v-up">10.77%</div></div>
+              <div class="kv"><div class="k">ROE</div><div class="v num">16.8%</div></div>
+              <div class="kv"><div class="k">毛利率</div><div class="v num">89.6%</div></div>
+              <div class="kv"><div class="k">PE (TTM)</div><div class="v num">18.68</div></div>
+              <div class="kv"><div class="k">PB</div><div class="v num">6.62</div></div>
+              <div class="kv"><div class="k">负债率</div><div class="v num">15.2%</div></div>
+              <div class="kv"><div class="k">营收增速</div><div class="v num v-up">1.3%</div></div>
+              <div class="kv"><div class="k">52周位置</div><div class="v num">46%</div></div>
+              <div class="kv"><div class="k">3月动量</div><div class="v num v-up">+3.9%</div></div>
+              <div class="kv"><div class="k">ATR(14)</div><div class="v num">2.1%</div></div>
+              <div class="kv"><div class="k">股息率</div><div class="v num">2.4%</div></div>
+              <div class="kv"><div class="k">信息比率</div><div class="v num">0.34</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 走势图（深色） -->
+      <div class="card" style="margin-bottom:18px;overflow:hidden">
+        <div class="card-head" style="background:var(--chart-bg);border-bottom:1px solid #1e2938">
+          <div class="card-title" style="color:#e5e7eb">净值走势</div>
+          <div class="card-sub" style="color:#64748b">2019-01-02 ~ 2026-10-30 · 1894 个交易日</div>
+        </div>
+        <div class="chart-dark"><div id="kline" class="chart"></div></div>
+      </div>
+
+      <!-- AI 分析 -->
+      <div class="card" style="margin-bottom:18px">
+        <div class="card-head">
+          <div class="card-title">AI 定性分析</div>
+          <div class="card-sub">DeepSeek · 49.8s · 2,847 tokens</div>
+        </div>
+        <div class="card-pad">
+          <div style="font-size:14px;color:#1f2937;margin-bottom:16px;line-height:1.7">
+            <b>结论：</b>质量与估值撑底但成长停滞、短期超买，宜回踩均线分批建仓。
+          </div>
+          <div class="ai-grid">
+            <div class="ai-block ai-bull">
+              <h5 style="color:var(--up)">▲ 看多理由</h5>
+              <ul>
+                <li>ROE 24.47%、ROIC 23.27%、毛利率 89.58%，质量维度 95.3 分</li>
+                <li>资产负债率仅 11.90%，流动比率 7.19，经营现金流/净利润 1.26</li>
+                <li>PE(TTM) 21.18，低于候选价位隐含的 PE25 倍对应价</li>
+              </ul>
+            </div>
+            <div class="ai-block ai-bear">
+              <h5 style="color:var(--down)">▼ 看空理由</h5>
+              <ul>
+                <li>营收同比 +1.82%、净利同比 -0.25%，成长维度仅 37.5 分</li>
+                <li>风险收益比 0.66，RSI 72.3 已进入超买区</li>
+                <li>52 周位置 0.64，短期上行动能减弱</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 折叠：高级指标 -->
+      <div class="card" style="margin-bottom:18px">
+        <div class="collapse-head">
+          <div>
+            <div class="card-title">高级指标</div>
+            <div class="card-sub" style="margin-top:2px">统计特征 / 技术指标 / 相对基准 / 行为特征 · 共 28 项</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+
+      <div class="disclaimer">
+        <b>用途声明：</b>本软件为个人科学研究工具，所有输出均为基于公开数据的量化计算结果与 AI 研究笔记，
+        不构成对外投资建议。目标价与买卖点为算法计算结果，请自行判断风险。
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ 雷达图 ============
+const radar = echarts.init(document.getElementById('radar'));
+radar.setOption({
+  radar: {
+    indicator: [
+      {name:'估值', max:100}, {name:'成长', max:100}, {name:'质量', max:100},
+      {name:'动量', max:100}, {name:'风险', max:100}, {name:'AI情绪', max:100}
+    ],
+    radius:'56%',
+    axisName:{color:'#6b7280', fontSize:11, padding:[0,0,0,0]},
+    splitLine:{lineStyle:{color:'#eef0f3'}},
+    splitArea:{areaStyle:{color:['#fafbfc','#ffffff']}},
+    axisLine:{lineStyle:{color:'#eef0f3'}}
+  },
+  series:[{
+    type:'radar',
+    data:[{
+      value:[43.3, 37.5, 94.5, 59.0, 48.6, 62.0],
+      areaStyle:{color:'rgba(79,70,229,.16)'},
+      lineStyle:{color:'#4f46e5', width:2},
+      itemStyle:{color:'#4f46e5'}
+    }],
+    symbolSize:4
+  }]
+});
+
+// ============ 深色走势图 ============
+const kline = echarts.init(document.getElementById('kline'));
+
+// 造一段茅台风格的历史曲线（2019-2026）
+const dates = [], closes = [];
+let base = 600, d = new Date(2019,0,2);
+const phases = [
+  {months:12, drift:0.035, vol:0.02},   // 2019 上涨
+  {months:14, drift:0.055, vol:0.025},  // 2020-2021 冲高
+  {months:18, drift:-0.028, vol:0.022}, // 2021-2023 回落
+  {months:12, drift:0.008, vol:0.018},  // 2024 震荡
+  {months:10, drift:0.012, vol:0.016},  // 2025-2026 修复
+];
+let rnd = 42;
+function rand(){ rnd = (rnd*1103515245+12345) & 0x7fffffff; return (rnd/0x7fffffff-0.5)*2; }
+
+phases.forEach(ph=>{
+  for(let i=0;i<ph.months*21;i++){
+    base *= (1 + ph.drift/252 + rand()*ph.vol*0.5);
+    d.setDate(d.getDate()+1);
+    if(d.getDay()===0||d.getDay()===6) continue;
+    dates.push(d.toISOString().slice(0,10));
+    closes.push(+base.toFixed(2));
+  }
+});
+// 归一到结尾 1330
+const scale = 1330 / closes[closes.length-1];
+closes.forEach((v,i)=>closes[i]=+(v*scale).toFixed(2));
+
+kline.setOption({
+  backgroundColor:'transparent',
+  tooltip:{
+    trigger:'axis',
+    backgroundColor:'rgba(15,22,32,.95)',
+    borderColor:'#1e2938',
+    textStyle:{color:'#e5e7eb', fontSize:12},
+    axisPointer:{type:'line', lineStyle:{color:'#334155'}}
+  },
+  grid:{left:56, right:24, top:18, bottom:28},
+  xAxis:{
+    type:'category', data:dates, boundaryGap:false,
+    axisLabel:{color:'#64748b', fontSize:10.5, interval: Math.floor(dates.length/6)},
+    axisLine:{lineStyle:{color:'#1e2938'}},
+    axisTick:{show:false}
+  },
+  yAxis:{
+    type:'value', scale:true,
+    axisLabel:{color:'#64748b', fontSize:10.5},
+    splitLine:{lineStyle:{color:'#1a2330'}}
+  },
+  series:[{
+    type:'line', showSymbol:false, data:closes,
+    lineStyle:{width:1.8, color:'#818cf8'},
+    areaStyle:{
+      color:new echarts.graphic.LinearGradient(0,0,0,1,[
+        {offset:0, color:'rgba(129,140,248,.28)'},
+        {offset:1, color:'rgba(129,140,248,.02)'}
+      ])
+    },
+    markLine:{
+      silent:true, symbol:'none',
+      label:{fontSize:10, color:'#94a3b8'},
+      data:[
+        {yAxis:1330.75, lineStyle:{color:'#e2e8f0', type:'solid'}, label:{formatter:'现价', position:'insideEndTop'}},
+        {yAxis:1519.05, lineStyle:{color:'#f87171', type:'dashed'}, label:{formatter:'目标', position:'insideEndTop'}},
+        {yAxis:1198.51, lineStyle:{color:'#34d399', type:'dashed'}, label:{formatter:'止损', position:'insideEndTop'}}
+      ]
+    }
+  }]
+});
+
+window.addEventListener('resize',()=>{radar.resize();kline.resize();});
+</script>
+</body>
+</html>

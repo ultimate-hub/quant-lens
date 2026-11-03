@@ -50,7 +50,22 @@ if STATIC_DIR.exists():
 
 @app.get("/")
 def index():
-    """访问根路径时返回前端页面。"""
+    """
+    根路径返回新版界面（static/app/index.html）。
+
+    页面本身是单页应用，用 hash 路由：
+        /#/analysis   个股分析
+        /#/screen     选股筛选
+        /#/watchlist  我的候选池
+        /#/news       新闻情报
+        /#/library    市场百科
+        /#/settings   设置
+    """
+    new_app = STATIC_DIR / "app" / "index.html"
+    if new_app.exists():
+        return FileResponse(new_app)
+
+    # 兜底：新版不存在时退回旧版
     v2 = STATIC_DIR / "v2.html"
     if v2.exists():
         return FileResponse(v2)
@@ -58,6 +73,15 @@ def index():
     if index_file.exists():
         return FileResponse(index_file)
     return {"message": "前端页面尚未创建，请访问 /docs 查看接口文档"}
+
+
+@app.get("/classic")
+def index_classic():
+    """旧版界面（保留一个版本对照，稳定后可删）。"""
+    v2 = STATIC_DIR / "v2.html"
+    if v2.exists():
+        return FileResponse(v2)
+    return {"message": "旧版页面不存在"}
 
 
 @app.get("/v1")

@@ -468,6 +468,10 @@ def compute_price_metrics(df: pd.DataFrame, bench: pd.DataFrame | None = None) -
         "end_date": s.index[-1].strftime("%Y-%m-%d"),
         "days": int(len(s)),
         "latest_close": round(float(s.iloc[-1]), 4),
+        # 最后一个交易日的涨跌幅（前端显示在现价旁边用这个，
+        # 不能用 total_return ——那是整段区间的收益，会误导用户以为是当日涨跌）
+        "daily_change": (round(float(s.iloc[-1] / s.iloc[-2] - 1), 6)
+                         if len(s) >= 2 else 0.0),
 
         # 收益与风险
         "total_return": round(total_return(s), 6),

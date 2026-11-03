@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量化终端 v2</title>
+<link rel="stylesheet" href="/static/app/styles.css">
+<script src="/static/vendor/echarts.min.js"></script>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ==================== 侧边栏 ==================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">量</div>
+      <div>
+        <div class="brand-name">量化终端</div>
+        <div class="brand-sub">QUANT TERMINAL</div>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">分析</div>
+      <div class="nav-item" data-page="analysis">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+        个股分析
+      </div>
+      <div class="nav-item" data-page="screen">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        选股筛选
+      </div>
+      <div class="nav-item" data-page="watchlist">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        我的候选池
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">情报</div>
+      <div class="nav-item" data-page="news">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg>
+        新闻情报
+      </div>
+      <div class="nav-item" data-page="library">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5a2 2 0 012-2h12a2 2 0 012 2v14l-4-3-4 3-4-3-4 3z"/></svg>
+        市场百科
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">系统</div>
+      <div class="nav-item" data-page="settings">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+        设置
+      </div>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="ai-pill" id="aiPill" onclick="location.hash='#/settings'">
+        <span class="dot off" id="aiDot"></span>
+        <span id="aiLabel">AI 未配置</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ==================== 主区 ==================== -->
+  <div class="main">
+
+    <header class="topbar">
+      <div class="search" id="globalSearch">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" id="searchInput" placeholder="搜索股票、板块或关键词…" autocomplete="off">
+        <span class="search-kbd">Ctrl K</span>
+        <div id="searchSuggest" class="suggest hidden"></div>
+      </div>
+
+      <div class="chips" id="marketChips"></div>
+
+      <select class="select" id="profileSelect" style="width:auto;min-width:130px"></select>
+    </header>
+
+    <div class="content" id="content">
+      <div class="loading"><div class="spinner"></div><span>加载中…</span></div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module" src="/static/app/js/core.js"></script>
+</body>
+</html>
