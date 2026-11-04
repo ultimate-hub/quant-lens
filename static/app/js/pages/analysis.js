@@ -5,6 +5,7 @@
 import {
   esc, fmt, pct, dirCls, thousand, emptyBox, alertBox, navigate, api,
 } from '../shared.js';
+import * as outlook from './analysis-outlook.js';
 
 let charts = {};
 
@@ -14,6 +15,7 @@ export async function render(root, ctx) {
   // 销毁上一轮图表，避免内存泄漏
   Object.values(charts).forEach(c => { try { c.dispose(); } catch (_) {} });
   charts = {};
+  outlook.dispose();
 
   const symbol = params.symbol || state.currentSymbol;
 
@@ -48,6 +50,17 @@ export async function render(root, ctx) {
 
   root.innerHTML = buildHTML(data);
   drawCharts(data);
+
+  // 推演与配仓建议单独拉取（它内部要再跑一次分析算锚点，串行会慢）
+  const wrap = root.querySelector('#outlookWrap');
+  if (wrap) {
+    outlook.mountPlaceholder(root);
+    api.get(`/api/v2/outlook/${encodeURIComponent(symbol)}`, {
+      days: 20, sims: 1000, profile: state.profile,
+    })
+      .then(d => outlook.renderOutlook(root, d, ctx))
+      .catch(err => outlook.renderError(root, err.message));
+  }
 
   // 模式名显示在雷达卡头
   const modeEl = document.getElementById('radarMode');
@@ -106,6 +119,7 @@ function buildHTML(d) {
     ${radarCard()}
     ${metricsCard(d)}
   </div>
+  <div id="outlookWrap" class="mb-16"></div>
   ${chartCard(d)}
   ${ai ? aiSection(ai, d.meta) : aiErrorSection(d.meta)}
   ${extendedSection(d.extended_metrics || {})}

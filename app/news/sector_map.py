@@ -165,9 +165,30 @@ SECTORS: dict[str, dict] = {
 }
 
 
+def _merged() -> dict[str, dict]:
+    """
+    静态表 + 概念库（数据库）的合并视图。
+
+    为什么合并而不是直接替换：
+        - 概念库是新的唯一数据源，支持用户自定义
+        - 但如果数据库还没建好/读失败，新闻功能不能因此挂掉
+          → 就退回到这份静态表，保证「新闻永远能用」
+    """
+    merged = {k: {"aliases": list(v.get("aliases", [])),
+                  "stocks": list(v.get("stocks", []))}
+              for k, v in SECTORS.items()}
+    try:
+        from app.concepts import store
+        for name, info in store.dump_all().items():
+            merged[name] = {"aliases": info["aliases"], "stocks": info["stocks"]}
+    except Exception:  # noqa: BLE001
+        pass          # 数据库不可用就用静态表
+    return merged
+
+
 def map_text(text: str, max_sectors: int = 5) -> list[dict]:
     """
-    从一段文本里识别涉及的板块。
+    从一段文本里识别涉及的概念。
 
     返回：[{sector, matched_terms, stocks}]
     """
@@ -175,7 +196,7 @@ def map_text(text: str, max_sectors: int = 5) -> list[dict]:
         return []
 
     found = []
-    for sector, info in SECTORS.items():
+    for sector, info in _merged().items():
         terms = [sector] + list(info.get("aliases", []))
         hits = [t for t in terms if t and t in text]
         if hits:
@@ -191,13 +212,13 @@ def map_text(text: str, max_sectors: int = 5) -> list[dict]:
 
 
 def map_keyword(keyword: str) -> list[dict]:
-    """直接查关键词对应板块（用于搜索前给用户提示）。"""
+    """直接查关键词对应概念（用于搜索前给用户提示）。"""
     return map_text(keyword, max_sectors=3)
 
 
 def all_sectors() -> list[str]:
-    return list(SECTORS.keys())
+    return list(_merged().keys())
 
 
 def sector_stocks(sector: str) -> list[tuple[str, str]]:
-    return SECTORS.get(sector, {}).get("stocks", [])
+    return _merged().get(sector, {}).get("stocks", [])

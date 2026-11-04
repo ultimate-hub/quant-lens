@@ -67,6 +67,15 @@ def compute_anchors(df: pd.DataFrame, pe_ttm: float | None = None,
     buy_low = supports[0] if supports else _round(price * 0.92)
     buy_high = supports[min(2, len(supports) - 1)] if supports else _round(price * 0.97)
 
+    # 支撑位去重后可能只剩 1 个，区间会塌缩成一个点（例如 220.41 ~ 220.41），
+    # 那样「分批建仓」就没有意义了。这里强制给一个最小宽度（约 3%）。
+    if buy_high <= buy_low:
+        buy_high = _round(min(price * 0.99, buy_low * 1.03))
+    if buy_high <= buy_low:
+        buy_low = _round(buy_high * 0.97)
+    if buy_high >= price:
+        buy_high = _round(price * 0.99)
+
     # ---------- 阻力位候选（目标价技术法）
     resistances = sorted({_round(x) for x in
                           [high_60, high_250, high_500]

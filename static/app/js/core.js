@@ -15,6 +15,7 @@ const PAGES = {
   analysis:  { module: './pages/analysis.js' },
   screen:    { module: './pages/screen.js' },
   watchlist: { module: './pages/watchlist.js' },
+  concepts:  { module: './pages/concepts.js' },
   news:      { module: './pages/news.js' },
   library:   { module: './pages/library.js' },
   catalog:   { module: './pages/catalog.js' },

@@ -109,8 +109,118 @@ def news_summary(q: str = Query(...), days: int = 7, limit: int = 20,
 
 @router.get("/sectors")
 def list_sectors():
-    """内置板块列表。"""
-    return {"sectors": sector_map.all_sectors()}
+    """
+    全部概念名（行业 + 概念 + 用户自定义）。
+
+    历史名字保留为 /sectors，实际数据源已经是概念库。
+    """
+    from app.concepts import store as concept_store
+    return {"sectors": concept_store.all_names()}
+
+
+# ==================================================================
+# 概念库（行业 / 概念 / 用户自定义）
+# ==================================================================
+class ConceptIn(BaseModel):
+    name: str = Field(..., description="概念名称")
+    kind: str = Field("concept", description="industry 或 concept")
+    note: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    symbols: list[str] = Field(default_factory=list)
+
+
+class ConceptPatch(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    note: str | None = None
+
+
+class SymListIn(BaseModel):
+    symbols: list[str] = Field(default_factory=list)
+
+
+class AliasIn(BaseModel):
+    aliases: list[str] = Field(default_factory=list)
+
+
+@router.get("/concepts")
+def list_concepts(kind: str | None = Query(None, description="industry / concept"),
+                  q: str | None = Query(None, description="按名称或别名搜")):
+    """列出全部概念（含用户自定义）。"""
+    from app.concepts import store as concept_store
+    return {
+        "concepts": concept_store.list_concepts(kind=kind, q=q),
+        "stats": concept_store.stats(),
+    }
+
+
+@router.get("/concepts/{cid}")
+def get_concept(cid: int):
+    from app.concepts import store as concept_store
+    c = concept_store.get_concept(cid)
+    if not c:
+        raise HTTPException(status_code=404, detail="概念不存在")
+    return {"concept": c}
+
+
+@router.post("/concepts")
+def create_concept(body: ConceptIn):
+    from app.concepts import store as concept_store
+    try:
+        cid = concept_store.create_concept(
+            body.name, kind=body.kind, note=body.note,
+            aliases=body.aliases, symbols=body.symbols)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"id": cid, "ok": True}
+
+
+@router.put("/concepts/{cid}")
+def update_concept(cid: int, body: ConceptPatch):
+    from app.concepts import store as concept_store
+    try:
+        concept_store.update_concept(cid, name=body.name, note=body.note, kind=body.kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.delete("/concepts/{cid}")
+def delete_concept(cid: int):
+    from app.concepts import store as concept_store
+    try:
+        concept_store.delete_concept(cid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.post("/concepts/{cid}/items")
+def add_concept_items(cid: int, body: SymListIn):
+    from app.concepts import store as concept_store
+    n = concept_store.add_items(cid, body.symbols)
+    return {"added": n}
+
+
+@router.delete("/concepts/{cid}/items")
+def remove_concept_items(cid: int, symbols: str = Query(..., description="逗号分隔")):
+    from app.concepts import store as concept_store
+    lst = [s.strip() for s in symbols.split(",") if s.strip()]
+    return {"removed": concept_store.remove_items(cid, lst)}
+
+
+@router.post("/concepts/{cid}/aliases")
+def add_concept_aliases(cid: int, body: AliasIn):
+    from app.concepts import store as concept_store
+    n = concept_store.add_aliases(cid, body.aliases)
+    return {"added": n}
+
+
+@router.delete("/concepts/{cid}/aliases")
+def remove_concept_alias(cid: int, alias: str = Query(...)):
+    from app.concepts import store as concept_store
+    concept_store.remove_alias(cid, alias)
+    return {"ok": True}
 
 
 @router.get("/sectors/{name}")
@@ -377,6 +487,103 @@ def library_entry(entry_id: str):
         if e["id"] == entry_id:
             return {"entry": e}
     raise HTTPException(status_code=404, detail="没有这条知识条目")
+
+
+# ==================================================================
+# 走势推演 + 配仓建议
+# ==================================================================
+@router.get("/outlook/{symbol}")
+def outlook(symbol: str,
+            days: int = Query(20, ge=5, le=60, description="推演交易日数"),
+            sims: int = Query(1000, ge=200, le=5000, description="模拟路径数"),
+            profile: str = Query("balanced")):
+    """
+    走势推演 + 配仓建议。
+
+    注意：这里**不调用 AI**。
+        - 推演是统计学模拟（历史日收益自举）
+        - 建议是规则引擎（可追溯到具体数字）
+    这样即使没有配 AI 渠道，这两个功能也完整可用。
+    """
+    from app.analytics import advice as advice_mod
+    from app.analytics import forecast as forecast_mod
+
+    try:
+        bundle = service.analyze(symbol, profile=profile, use_ai=False)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)[:300]) from exc
+
+    # final 是合并后的锚点（含 target_price / entry_range / stop_loss / position_pct），
+    # anchors 是原始计算结构，字段名不同 —— 用错会导致目标价取到 None
+    anchors = bundle.get("final") or {}
+    price_m = bundle.get("price_metrics") or {}
+    fund_m = bundle.get("fundamental_metrics") or {}
+    scoring = bundle.get("final") or {}
+    series = bundle.get("price_series") or []
+
+    if not series:
+        raise HTTPException(status_code=400, detail="没有足够的历史价格数据")
+
+    import pandas as pd
+
+    closes = pd.Series(
+        [p["close"] for p in series],
+        index=pd.to_datetime([p["date"] for p in series]))
+
+    cur = anchors.get("current_price") or float(closes.iloc[-1])
+
+    # ---- 模拟 ----
+    try:
+        fc = forecast_mod.simulate(
+            symbol, closes, days=days, sims=sims,
+            target_price=anchors.get("target_price"),
+            stop_price=anchors.get("stop_loss"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # ---- 建议 ----
+    adv = advice_mod.build_advice(
+        symbol=symbol,
+        name=bundle.get("name") or symbol,
+        current_price=cur,
+        anchors=anchors,
+        scoring=scoring,
+        price_metrics=price_m,
+        fundamental_metrics=fund_m,
+        forecast=fc,
+    )
+
+    return {
+        "symbol": symbol,
+        "name": bundle.get("name"),
+        "forecast": fc,
+        "scenarios": forecast_mod.scenarios(fc),
+        "advice": adv,
+    }
+
+
+@router.get("/advice/{symbol}")
+def advice_only(symbol: str, profile: str = Query("balanced")):
+    """只要配仓建议（不跑模拟，快）。"""
+    from app.analytics import advice as advice_mod
+
+    try:
+        bundle = service.analyze(symbol, profile=profile, use_ai=False)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)[:300]) from exc
+
+    anchors = bundle.get("final") or {}
+    return {
+        "advice": advice_mod.build_advice(
+            symbol=symbol,
+            name=bundle.get("name") or symbol,
+            current_price=anchors.get("current_price") or 0,
+            anchors=anchors,
+            scoring=bundle.get("final") or {},
+            price_metrics=bundle.get("price_metrics") or {},
+            fundamental_metrics=bundle.get("fundamental_metrics") or {},
+        )
+    }
 
 
 # ==================================================================
