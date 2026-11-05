@@ -562,6 +562,47 @@ def outlook(symbol: str,
     }
 
 
+@router.get("/forecast/{symbol}/calibration")
+def forecast_calibration(
+    symbol: str,
+    days: int = Query(20, ge=5, le=60),
+    sims: int = Query(300, ge=100, le=1000),
+    tests: int = Query(12, ge=3, le=30),
+):
+    """
+    走势推演的校准检验。
+
+    回答的问题是：**这个模拟到底罩不罩得住真实值**。
+
+    做法是走查回测：在历史上取若干个截止点，只用截止点之前的数据模拟，
+    再看真实价格落没落在 50% / 90% 区间里，统计命中率。
+
+    如果 50% 区间只罩住 30%，说明模型过度自信，置信带要放宽；
+    如果罩住 75%，说明画太宽了，不够锐利。
+    """
+    from app.analytics import forecast as forecast_mod
+
+    try:
+        bundle = service.analyze(symbol, profile="balanced", use_ai=False)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)[:300]) from exc
+
+    series = bundle.get("price_series") or []
+    if not series:
+        raise HTTPException(status_code=400, detail="没有历史价格数据")
+
+    import pandas as pd
+
+    closes = pd.Series(
+        [p["close"] for p in series],
+        index=pd.to_datetime([p["date"] for p in series]))
+
+    out = forecast_mod.calibrate(symbol, closes, days=days, sims=sims, n_tests=tests)
+    out["symbol"] = symbol
+    out["name"] = bundle.get("name")
+    return out
+
+
 @router.get("/advice/{symbol}")
 def advice_only(symbol: str, profile: str = Query("balanced")):
     """只要配仓建议（不跑模拟，快）。"""

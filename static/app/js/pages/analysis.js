@@ -58,7 +58,15 @@ export async function render(root, ctx) {
     api.get(`/api/v2/outlook/${encodeURIComponent(symbol)}`, {
       days: 20, sims: 1000, profile: state.profile,
     })
-      .then(d => outlook.renderOutlook(root, d, ctx))
+      .then(d => {
+        outlook.renderOutlook(root, d, ctx);
+        // 支持 #/analysis?symbol=xxx&calibrate=1 自动跑一次校准
+        if (ctx.params?.calibrate) {
+          setTimeout(() => {
+            document.getElementById('btnCalib')?.click();
+          }, 300);
+        }
+      })
       .catch(err => outlook.renderError(root, err.message));
   }
 

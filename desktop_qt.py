@@ -1,4 +1,4 @@
-"""
+﻿"""
 真正的独立桌面窗口（PyQt6 + QtWebEngine）。
 
 和前几版的区别：
@@ -124,7 +124,7 @@ def wait_healthy(port: int, timeout: float = 40.0) -> bool:
 # ------------------------------------------------------------------
 def main() -> int:
     log("=" * 50)
-    log("量化终端 v2（独立窗口版）启动中…")
+    log("量镜 QuantLens 启动中…")
 
     from app.core.db import init_db
     init_db()
@@ -146,8 +146,8 @@ def main() -> int:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
 
     app = QApplication(sys.argv)
-    app.setApplicationName("量化终端")
-    app.setApplicationDisplayName("量化终端 v2")
+    app.setApplicationName("量镜")
+    app.setApplicationDisplayName("量镜 QuantLens")
 
     url = f"http://{HOST}:{port}"
 
@@ -156,7 +156,7 @@ def main() -> int:
 
     window = QMainWindow()
     window.setCentralWidget(view)
-    window.setWindowTitle("量化终端 v2")
+    window.setWindowTitle("量镜 QuantLens")
     window.resize(1480, 960)
     window.setMinimumSize(1100, 720)
 
@@ -187,7 +187,7 @@ def _fatal(text: str) -> None:
     """没有 GUI 时用系统消息框报错。"""
     try:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(None, text, "量化终端 v2", 0x10)
+        ctypes.windll.user32.MessageBoxW(None, text, "量镜 QuantLens", 0x10)
     except Exception:  # noqa: BLE001
         pass
 

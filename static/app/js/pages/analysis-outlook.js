@@ -53,6 +53,97 @@ export function renderOutlook(root, data, ctx) {
     ${adviceCard(adv)}`;
 
   drawFanChart(fc);
+
+  el.querySelector('#btnCalib')?.addEventListener('click', (e) => {
+    runCalibration(e.target, data.symbol, fc.days);
+  });
+}
+
+// ============================================================
+// 校准校验
+// ============================================================
+async function runCalibration(btn, symbol, days) {
+  const box = document.getElementById('calibBox');
+  if (!box) return;
+
+  btn.disabled = true;
+  btn.textContent = '校验中…';
+  box.innerHTML = `<div class="loading" style="padding:20px">
+    <div class="spinner"></div><span>正在做走查回测…</span></div>`;
+
+  try {
+    const r = await fetch(
+      `/api/v2/forecast/${encodeURIComponent(symbol)}/calibration`
+      + `?days=${days}&sims=300&tests=12`).then(x => x.json());
+
+    if (r.ok === false) {
+      box.innerHTML = `<div class="alert alert-warn" style="font-size:12px">
+        ${esc(r.reason || '校验失败')}</div>`;
+    } else {
+      box.innerHTML = calibrationResult(r);
+    }
+  } catch (err) {
+    box.innerHTML = `<div class="alert alert-error" style="font-size:12px">
+      校验失败：${esc(err.message)}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '重新校验';
+}
+
+function calibrationResult(r) {
+  const bar = (label, rate, expect, verdict) => {
+    const ok = Math.abs(rate - expect) <= 0.12;
+    const color = ok ? 'var(--down)' : 'var(--warn)';
+    return `
+    <div style="margin-bottom:10px">
+      <div class="flex between fs-12" style="margin-bottom:4px">
+        <span class="text-2">${esc(label)}</span>
+        <span><b class="num" style="color:${color}">${(rate * 100).toFixed(0)}%</b>
+          <span class="text-3">/ 预期 ${(expect * 100).toFixed(0)}%</span>
+          <span class="tag ${ok ? 'tag-down' : 'tag-warn'}" style="margin-left:6px">
+            ${esc(verdict)}</span></span>
+      </div>
+      <div style="position:relative;height:7px;background:var(--surface-3);
+                  border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.min(rate * 100, 100)}%;
+             background:${color};border-radius:4px"></div>
+        <div style="position:absolute;top:-2px;left:${expect * 100}%;
+             width:2px;height:11px;background:var(--text)"></div>
+      </div>
+    </div>`;
+  };
+
+  const rows = (r.details || []).slice(0, 8).map(d => `
+    <tr>
+      <td class="fs-12">${esc(d.cutoff)}</td>
+      <td class="num fs-12">${thousand(d.start)}</td>
+      <td class="num fs-12">${thousand(d.actual)}</td>
+      <td class="num fs-11">${thousand(d.band50[0])}~${thousand(d.band50[1])}</td>
+      <td class="num fs-11">${thousand(d.band90[0])}~${thousand(d.band90[1])}</td>
+      <td style="color:${d.in50 ? 'var(--down)' : 'var(--up)'}">${d.in50 ? '✓' : '✗'}</td>
+      <td style="color:${d.in90 ? 'var(--down)' : 'var(--up)'}">${d.in90 ? '✓' : '✗'}</td>
+    </tr>`).join('');
+
+  return `
+    <div style="padding:14px 16px;border-radius:11px;background:var(--surface-2)">
+      <div class="fs-12 fw-600 mb-12">
+        过去 ${r.tests} 次回测（每次提前 ${r.days} 个交易日推演，与真实价对照）
+      </div>
+      ${bar('50% 区间', r.hit50, r.expected50, r.verdict50)}
+      ${bar('90% 区间', r.hit90, r.expected90, r.verdict90)}
+      <div class="fs-11 text-3 mt-12" style="line-height:1.7">${esc(r.how_to_read)}</div>
+    </div>
+
+    <div class="table-wrap mt-12">
+      <table class="table" style="font-size:12px">
+        <thead><tr>
+          <th>截止日</th><th>起点</th><th>实际</th>
+          <th>50% 区间</th><th>90% 区间</th><th>50%</th><th>90%</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 // ============================================================
@@ -133,6 +224,61 @@ function forecastCard(fc, scen) {
         价格可能落在哪里"。它不考虑政策、业绩突变、流动性枯竭。
         把区间当参考，不要当承诺。
       </div>
+
+      ${volModelRow(fc)}
+
+      <div class="mt-16" style="padding-top:14px;border-top:1px solid var(--border)">
+        <div class="flex between center" style="flex-wrap:wrap;gap:8px">
+          <div>
+            <div class="fs-12 fw-600">置信度校验</div>
+            <div class="fs-11 text-3">用历史回测检验这个区间到底罩不罩得住真实价</div>
+          </div>
+          <button class="btn ghost sm" id="btnCalib">校验模型（约 15 秒）</button>
+        </div>
+        <div id="calibBox" class="mt-12"></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** 波动率模型一行 */
+function volModelRow(fc) {
+  const v = fc.vol_model;
+  if (!v || !v.ok) {
+    return `<div class="fs-11 text-3 mt-12">
+      波动率模型未启用${v?.reason ? '（' + esc(v.reason) + '）' : ''}，区间按历史平均波动绘制。
+    </div>`;
+  }
+  const ratio = v.vol_ratio ?? 1;
+  const state = ratio > 1.1 ? '当前波动高于常态'
+    : ratio < 0.9 ? '当前波动低于常态' : '当前波动接近常态';
+
+  return `
+  <div class="mt-16" style="padding:12px 14px;border-radius:11px;background:var(--surface-2)">
+    <div class="flex between center" style="flex-wrap:wrap;gap:8px">
+      <div>
+        <div class="fs-12 fw-600">波动率模型：${esc(v.method)}</div>
+        <div class="fs-11 text-3" style="margin-top:3px">
+          ${esc(state)}（${ratio.toFixed(2)}× 同窗口均值）·
+          持续度 ${(v.persistence ?? 0).toFixed(3)} ·
+          冲击半衰期 ${v.half_life ?? '—'} 个交易日
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="fs-11 text-3">当前条件波动</div>
+        <div class="num fw-700" style="font-size:16px">
+          ${((v.cond_vol ?? 0) * 100).toFixed(1)}%
+        </div>
+        <div class="fs-11 text-3">
+          同窗口均值 ${((v.uncond_vol ?? 0) * 100).toFixed(1)}%
+        </div>
+      </div>
+    </div>
+    <div class="fs-11 text-3" style="margin-top:8px;line-height:1.6">
+      α=${v.alpha} β=${v.beta}，模拟时按 ${v.scale_applied}× 缩放了收益幅度 ——
+      高波动期区间会变宽，低波动期会收窄。<br>
+      注：这里的波动率基于上面推演所用的那一段历史（${fc.history_days} 个交易日），
+      与「核心指标」里的年化波动（全部历史）口径不同，不要直接对比。
     </div>
   </div>`;
 }

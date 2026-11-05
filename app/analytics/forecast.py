@@ -28,6 +28,8 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
+from app.analytics import garch
+
 
 def _seed_for(symbol: str, day: str) -> int:
     """由代码+日期生成稳定种子（同一天内结果固定）。"""
@@ -54,6 +56,7 @@ def simulate(
     target_price: float | None = None,
     stop_price: float | None = None,
     block: int = 5,
+    seed_salt: str = "",
 ) -> dict:
     """
     蒙特卡洛推演。
@@ -79,7 +82,19 @@ def simulate(
     rets = np.diff(np.log(prices))
     n = len(rets)
 
-    rng = np.random.default_rng(_seed_for(symbol, date.today().isoformat()))
+    rng = np.random.default_rng(
+        _seed_for(symbol + seed_salt, date.today().isoformat()))
+
+    # ---- GARCH 波动率调整 ----
+    # 自举用的是"历史平均"的波动水平，如果当前正处在高波动或低波动阶段，
+    # 画出来的带子就会偏窄或偏宽。用 GARCH 估出的当前条件波动 / 历史均值
+    # 作为缩放系数，把带子宽度校正到"当下这个状态"。
+    g = garch.estimate_garch11(rets)
+    vol_scale = 1.0
+    if g.get("ok"):
+        vol_scale = float(g["vol_ratio"])
+        # 夹一下，防止极端值把模拟放大到不合理的程度
+        vol_scale = float(min(max(vol_scale, 0.5), 2.5))
 
     # ---- 块自举：抽 block 天的连续片段，保留短期自相关 ----
     block = max(1, min(block, days))
@@ -89,6 +104,8 @@ def simulate(
     for i in range(sims):
         starts = rng.integers(0, n - block, size=n_blocks)
         sampled = np.concatenate([rets[st:st + block] for st in starts])[:days]
+        if vol_scale != 1.0:
+            sampled = sampled * vol_scale
         paths[i] = start_price * np.exp(np.cumsum(sampled))
 
     # ---- 分位数 ----
@@ -156,6 +173,21 @@ def simulate(
         "annual_vol": round(annual_vol, 6),
         "annual_drift": round(annual_drift, 6),
         "history_days": int(len(s)),
+        # 波动率模型：用来自检"当下的波动比平时高还是低"
+        "vol_model": {
+            "method": "GARCH(1,1) 方差目标法",
+            "ok": bool(g.get("ok")),
+            "cond_vol": g.get("cond_vol"),
+            "uncond_vol": g.get("uncond_vol"),
+            "vol_ratio": g.get("vol_ratio"),
+            "persistence": g.get("persistence"),
+            "half_life": g.get("half_life"),
+            "alpha": g.get("alpha"),
+            "beta": g.get("beta"),
+            "forecast_vol": g.get("forecast_vol"),
+            "scale_applied": round(vol_scale, 4),
+            "reason": g.get("reason") if not g.get("ok") else None,
+        },
         "note": "基于历史日收益自举抽样，不代表真实预测；未考虑节假日、政策与情绪",
     }
 
@@ -187,3 +219,114 @@ def scenarios(forecast: dict, target_price: float | None = None,
         o["price"] = round(o["price"], 2)
         o["days"] = days
     return out
+
+
+# ==================================================================
+# 校准检验：回答「这个预测到底能不能信」
+# ==================================================================
+def calibrate(
+    symbol: str,
+    closes: pd.Series,
+    days: int = 20,
+    sims: int = 300,
+    n_tests: int = 12,
+    step: int = 5,
+    min_history: int = 250,
+) -> dict:
+    """
+    走查式校准检验（walk-forward calibration）。
+
+    做法：
+        在历史上取若干个「截止点 T」，只用 T 之前的数据做模拟，
+        然后看真实的 T+days 收盘价落在哪个分位区间里。
+        重复 n_tests 次，统计命中率。
+
+    怎么读结果：
+        50% 区间应该有约 50% 的次数罩住真实价；
+        90% 区间应该有约 90%。
+        命中率明显偏低 → 区间画窄了（模型过度自信，危险）
+        命中率明显偏高 → 区间画宽了（模型过度保守，不够锐利）
+
+    这是判断"预测靠不靠谱"的唯一诚实办法 ——
+    不看模型多复杂，只看它过去罩住实际值的比例对不对。
+    """
+    s = pd.Series(closes).dropna()
+    n = len(s)
+    needed = min_history + days
+    if n < needed:
+        return {"ok": False,
+                "reason": f"历史数据不足（{n} 条），至少需要 {needed} 条才能做校准"}
+
+    hit50 = 0
+    hit90 = 0
+    tests = 0
+    details: list[dict] = []
+
+    for k in range(n_tests):
+        cut = n - days - k * step
+        if cut < min_history:
+            break
+
+        hist = s.iloc[:cut]
+        actual = float(s.iloc[cut + days - 1])
+
+        try:
+            fc = simulate(symbol, hist, days=days, sims=sims,
+                          block=5, seed_salt=f"|cal|{cut}")
+        except (ValueError, Exception):  # noqa: BLE001
+            continue
+
+        b = fc["bands"]
+        lo50, hi50 = b["p25"][-1], b["p75"][-1]
+        lo90, hi90 = b["p05"][-1], b["p95"][-1]
+
+        in50 = lo50 <= actual <= hi50
+        in90 = lo90 <= actual <= hi90
+        hit50 += int(in50)
+        hit90 += int(in90)
+        tests += 1
+
+        details.append({
+            "cutoff": str(hist.index[-1].date()) if isinstance(hist.index[-1], pd.Timestamp)
+                      else str(hist.index[-1]),
+            "start": round(float(hist.iloc[-1]), 2),
+            "actual": round(actual, 2),
+            "band50": [round(lo50, 2), round(hi50, 2)],
+            "band90": [round(lo90, 2), round(hi90, 2)],
+            "in50": bool(in50),
+            "in90": bool(in90),
+        })
+
+    if not tests:
+        return {"ok": False, "reason": "没有可用的回测样本"}
+
+    r50 = hit50 / tests
+    r90 = hit90 / tests
+
+    # 给一个人话结论
+    def _verdict(rate: float, expect: float) -> str:
+        diff = rate - expect
+        if abs(diff) <= 0.12:
+            return "校准良好"
+        if diff < -0.12:
+            return "区间偏窄（高估自信）"
+        return "区间偏宽（偏保守）"
+
+    return {
+        "ok": True,
+        "tests": tests,
+        "days": days,
+        "sims": sims,
+        "hit50": round(r50, 4),
+        "hit90": round(r90, 4),
+        "expected50": 0.50,
+        "expected90": 0.90,
+        "verdict50": _verdict(r50, 0.50),
+        "verdict90": _verdict(r90, 0.90),
+        "details": details,
+        "how_to_read": (
+            "50% 区间应当罩住约 50% 的实际值，90% 区间约 90%。"
+            "命中率明显低于预期说明区间画窄了（模型过度自信），"
+            "明显高于预期说明区间画宽了（偏保守）。"
+        ),
+    }

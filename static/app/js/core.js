@@ -305,6 +305,64 @@ function initSearch() {
 }
 
 // ============================================================
+// 首次运行：免责确认
+// ============================================================
+function showDisclaimerIfNeeded() {
+  if (loadLocal('disclaimer_ok', false)) return;
+
+  const mask = document.createElement('div');
+  mask.className = 'modal-mask';
+  mask.innerHTML = `
+    <div class="modal" style="max-width:620px">
+      <div class="modal-head">
+        <div class="modal-title">使用前请阅读</div>
+      </div>
+      <div class="modal-body" style="line-height:1.85">
+        <div class="alert alert-warn" style="margin-bottom:16px">
+          <b>本软件是个人科学研究工具，不构成任何投资建议。</b>
+        </div>
+
+        <div class="fs-13" style="color:var(--text);line-height:1.9">
+          <div style="margin-bottom:10px">
+            <b>1.</b> 所有输出（目标价、买入区间、止损位、仓位建议、走势推演区间）
+            都是基于公开数据的<b>算法计算结果</b>，不是买卖指令，也不构成投资建议。
+          </div>
+          <div style="margin-bottom:10px">
+            <b>2.</b> 走势推演是<b>蒙特卡洛模拟</b>，它描述的是「价格可能落在什么范围」，
+            而不是「价格会走到哪里」。<b>它不是价格预测。</b>
+          </div>
+          <div style="margin-bottom:10px">
+            <b>3.</b> 行情与财务数据来自公开网络接口，可能存在延迟、缺漏或错误。
+          </div>
+          <div style="margin-bottom:10px">
+            <b>4.</b> 据此做出的任何投资决策及其后果，由你自己承担。
+          </div>
+          <div>
+            <b>5.</b> 本软件不提供任何形式的荐股服务。
+          </div>
+        </div>
+
+        <div class="fs-11 text-3" style="margin-top:16px;padding-top:12px;
+             border-top:1px solid var(--border);line-height:1.7">
+          本软件以 AGPL-3.0 协议开源。数据、候选池、AI 渠道配置全部保存在你自己的电脑上，
+          不会上传到任何服务器。
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="disclaimerOk" style="width:100%">我已阅读并理解，开始使用</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(mask);
+
+  const close = () => {
+    saveLocal('disclaimer_ok', true);
+    mask.remove();
+  };
+  mask.querySelector('#disclaimerOk').addEventListener('click', close);
+}
+
+// ============================================================
 // 启动
 // ============================================================
 async function boot() {
@@ -349,6 +407,7 @@ async function boot() {
 
   window.addEventListener('hashchange', renderPage);
   await renderPage();
+  showDisclaimerIfNeeded();
 }
 
 boot();
