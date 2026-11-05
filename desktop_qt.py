@@ -1,4 +1,4 @@
-﻿"""
+"""
 真正的独立桌面窗口（PyQt6 + QtWebEngine）。
 
 和前几版的区别：
@@ -44,8 +44,22 @@ if sys.stdout is None or sys.stderr is None:
         sys.stderr = _null_stream
 
 # QtWebEngine 的一些必要设置，必须在导入 PyQt 之前设好
-os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
-                      "--disable-gpu-driver-bug-workarounds --enable-features=NetworkService")
+#
+# 关于 --no-sandbox（打包版）：
+#   实测在某些环境里（受管企业机、虚拟机、容器，以及受限的沙箱环境），
+#   Chromium 的渲染进程无法初始化。表现是：
+#       窗口能打开，但页面立刻加载失败（loadFinished(False)），
+#       任务管理器里看不到 QtWebEngineProcess 子进程。
+#   加上 --no-sandbox 后正常。
+#
+#   风险评估：本程序只加载 http://127.0.0.1:<port> 上我们自己产出的页面，
+#   不渲染任何用户提供的 HTML。沙箱主要防的是「不可信网页」，
+#   这个场景在本程序里不存在，因此关闭沙箱的额外风险极低，
+#   换来的是在各种机器上都能正常打开。
+_flags = "--disable-gpu-driver-bug-workarounds --enable-features=NetworkService"
+if getattr(sys, "frozen", False):
+    _flags += " --no-sandbox"
+os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", _flags)
 os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
 
 HOST = "127.0.0.1"
@@ -160,16 +174,34 @@ def main() -> int:
     window.resize(1480, 960)
     window.setMinimumSize(1100, 720)
 
+    # 诊断：渲染进程挂掉时把原因记下来。
+    # 没有这条日志的话，"页面加载失败"完全查不出原因 ——
+    # 是网络问题、渲染进程崩溃、还是被安全软件拦了，看不出来。
+    try:
+        view.page().renderProcessTerminated.connect(
+            lambda status, code: log(f"渲染进程异常退出 status={status} exitCode={code}"))
+    except Exception:  # noqa: BLE001
+        pass
+
     # 页面加载失败时给提示，而不是一片空白
     def on_load_finished(ok: bool) -> None:
         if ok:
             log("页面加载完成")
-        else:
-            log("页面加载失败")
-            QMessageBox.warning(
-                window, "加载失败",
-                f"界面加载失败。\n\n请检查是否还有另一个程序占用了 {port} 端口，\n"
-                f"或查看同目录的 运行日志.log。")
+            return
+
+        log("页面加载失败")
+        log(f"URL: {url}")
+        log(f"Chromium 参数: {os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS', '(未设置)')}")
+        QMessageBox.warning(
+            window, "界面加载失败",
+            f"页面没能加载出来。\n\n"
+            f"常见原因：\n"
+            f"1. 渲染进程被安全软件拦截（在受限的机器上常见）\n"
+            f"2. 端口 {port} 上有别的程序在跑\n"
+            f"3. 缺少 Qt 运行库\n\n"
+            f"你可以先用浏览器访问下面的地址，确认服务本身是好的：\n"
+            f"{url}\n\n"
+            f"详细信息见同目录的 运行日志.log。")
 
     view.loadFinished.connect(on_load_finished)
 
