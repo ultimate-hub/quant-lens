@@ -28,10 +28,37 @@ else:
 
 DATA_DIR = BASE_DIR / "data"              # 数据文件（可写）
 STATIC_DIR = RESOURCE_DIR / "static"      # 前端页面（只读资源）
-DB_PATH = DATA_DIR / "quant.db"           # SQLite 数据库
 
-# 确保目录存在（exist_ok=True 表示已存在也不报错）
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+def _prepare_data_dir(preferred: Path) -> tuple[Path, str]:
+    """
+    准备数据目录，返回 (实际使用的目录, 说明)。
+
+    为什么不能简单 mkdir 了事：
+        如果程序被放在只读位置（例如 C:\\Program Files\\...），
+        mkdir 会抛 PermissionError，而这个模块是在 import 时执行的，
+        整个程序会连一个像样的报错都给不出来就挂掉。
+
+        所以在安装目录不可写时，自动退到用户目录
+        %LOCALAPPDATA%\\QuantLens\\data —— 那里通常可写。
+    """
+    try:
+        preferred.mkdir(parents=True, exist_ok=True)
+        probe = preferred / ".write_probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return preferred, "安装目录"
+    except OSError:
+        import os
+
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or str(Path.home())
+        fallback = Path(base) / "QuantLens" / "data"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback, "用户目录（安装目录不可写，已自动切换）"
+
+
+DATA_DIR, DATA_DIR_NOTE = _prepare_data_dir(DATA_DIR)
+DB_PATH = DATA_DIR / "quant.db"           # SQLite 数据库
 
 # 无风险利率，用于计算夏普比率。取 2%（近似一年期国债收益率）
 RISK_FREE_RATE = 0.02
