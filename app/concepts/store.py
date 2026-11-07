@@ -50,23 +50,45 @@ def init() -> None:
 
 
 def ensure_seeded() -> None:
-    """首次运行把内置概念灌进去。表里已经有数据就跳过。"""
+    """
+    把内置概念同步进数据库。
+
+    这是**增量同步**，不是「只在空库时灌一次」：
+        1. 新加的内置概念 → 插入
+        2. 已存在的内置概念 → 补上新增的成分股和别名（不删用户自己加的）
+        3. 修正历史遗留的分类错误（见下面的迁移）
+
+    早期版本用的是「表里没数据才灌」，导致后来在 seed.py 里加概念，
+    老用户永远看不到。改成同步后，升级就能拿到新内容。
+    """
     from app.concepts import seed
 
     init()
     with db_session() as conn:
-        row = conn.execute("SELECT COUNT(1) AS c FROM concepts").fetchone()
-        if row and row["c"] > 0:
-            return
+        rows = conn.execute("SELECT id, name, kind, is_builtin FROM concepts").fetchall()
+        by_name = {r["name"]: r for r in rows}
 
         for idx, item in enumerate(seed.all_seed()):
-            cur = conn.execute(
-                "INSERT OR IGNORE INTO concepts(name, kind, note, is_builtin, sort_order)"
-                " VALUES (?,?,?,1,?)",
-                (item["name"], item["kind"], "", idx))
-            cid = cur.lastrowid
-            if not cid:
-                continue
+            row = by_name.get(item["name"])
+
+            if row is None:
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO concepts"
+                    "(name, kind, note, is_builtin, sort_order) VALUES (?,?,?,1,?)",
+                    (item["name"], item["kind"], "", idx))
+                cid = cur.lastrowid
+                if not cid:
+                    continue
+            else:
+                if not row["is_builtin"]:
+                    # 用户自己建了同名概念，不覆盖
+                    continue
+                cid = row["id"]
+                # 迁移：早期把「港股科技」归成了概念，现在应该是行业
+                if row["kind"] != item["kind"]:
+                    conn.execute("UPDATE concepts SET kind=? WHERE id=?",
+                                 (item["kind"], cid))
+
             for code, name in item["stocks"]:
                 conn.execute(
                     "INSERT OR IGNORE INTO concept_items(concept_id, symbol, name)"

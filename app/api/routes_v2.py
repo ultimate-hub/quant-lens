@@ -490,6 +490,98 @@ def library_entry(entry_id: str):
 
 
 # ==================================================================
+# 市场全景（热力图）
+# ==================================================================
+@router.get("/market/heatmap")
+def market_heatmap(force: bool = Query(False, description="强制重新抓取")):
+    """
+    市场全景热力图数据。
+
+    默认用当天缓存 —— 保证「今天的封面」一整天不变，
+    也避免反复请求东财批量接口被限流。
+    """
+    from app import market_overview
+
+    try:
+        return market_overview.build_heatmap(force=force)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)[:300]) from exc
+
+
+# ==================================================================
+# 持仓日志
+# ==================================================================
+class PositionIn(BaseModel):
+    symbol: str = Field(..., description="标准代码 600519.SH")
+    name: str = ""
+    buy_date: str = Field(..., description="YYYY-MM-DD")
+    buy_price: float = Field(..., gt=0)
+    shares: float = Field(..., gt=0)
+    target_ratio: float | None = Field(None, description="目标占比 %")
+    note: str = ""
+
+
+class PositionPatch(BaseModel):
+    symbol: str | None = None
+    name: str | None = None
+    buy_date: str | None = None
+    buy_price: float | None = None
+    shares: float | None = None
+    target_ratio: float | None = None
+    note: str | None = None
+
+
+@router.get("/positions")
+def list_positions():
+    """持仓明细 + 汇总（含当前价、浮盈、占比）。"""
+    from app import portfolio
+
+    try:
+        return portfolio.list_positions()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)[:300]) from exc
+
+
+@router.post("/positions")
+def add_position(body: PositionIn):
+    from app import portfolio
+
+    try:
+        pid = portfolio.add(
+            body.symbol, body.buy_date, body.buy_price, body.shares,
+            name=body.name, target_ratio=body.target_ratio, note=body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"id": pid, "ok": True}
+
+
+@router.put("/positions/{pid}")
+def update_position(pid: int, body: PositionPatch):
+    from app import portfolio
+
+    try:
+        portfolio.update(pid, **{k: v for k, v in body.model_dump().items()
+                                 if v is not None})
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.delete("/positions/{pid}")
+def delete_position(pid: int):
+    from app import portfolio
+    portfolio.remove(pid)
+    return {"ok": True}
+
+
+@router.delete("/positions")
+def clear_positions():
+    from app import portfolio
+    portfolio.clear_all()
+    return {"ok": True}
+
+
+# ==================================================================
 # 走势推演 + 配仓建议
 # ==================================================================
 @router.get("/outlook/{symbol}")
@@ -553,12 +645,28 @@ def outlook(symbol: str,
         forecast=fc,
     )
 
+    # ---- 时序模型对比（不影响上面的蒙特卡洛，是另一条路径的参考）----
+    ts = None
+    try:
+        from app.analytics import ts_models as ts_mod
+
+        ts_paths = ts_mod.forecast_all(closes.to_numpy(), days=days)
+        ts_bt = ts_mod.backtest(closes.to_numpy(), days=days)
+        ts = {
+            "paths": ts_paths,
+            "backtest": ts_bt,
+            "labels": {k: v[0] for k, v in ts_mod.MODELS.items()},
+        }
+    except Exception as exc:  # noqa: BLE001
+        ts = {"error": str(exc)[:200]}
+
     return {
         "symbol": symbol,
         "name": bundle.get("name"),
         "forecast": fc,
         "scenarios": forecast_mod.scenarios(fc),
         "advice": adv,
+        "ts": ts,
     }
 
 

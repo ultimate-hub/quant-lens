@@ -619,3 +619,33 @@ body{
 .sector-chip:hover{border-color:var(--border-strong);background:var(--surface-2)}
 .sector-chip.on{background:var(--primary-soft);border-color:var(--primary);
   color:var(--primary);font-weight:600}
+
+/* ============================================================
+   个股分析页：紧凑排版
+   ------------------------------------------------------------
+   原来一屏要滚两三次才看得完，但信息其实不密。这里收紧留白，
+   字号基本不动（保证可读），把纵向占用压下来约 25%。
+
+   用 [data-page="analysis"] 隔离，只影响这一个页面 ——
+   市场全景、持仓这些页面留白多一点更透气。
+   ============================================================ */
+#content[data-page="analysis"] .hero{
+  margin-bottom:12px;padding:14px 18px;
+}
+#content[data-page="analysis"] .hero-name{font-size:23px}
+#content[data-page="analysis"] .hero-meta{margin-top:6px;gap:6px}
+
+#content[data-page="analysis"] .card-pad{padding:14px 18px}
+#content[data-page="analysis"] .card-head{padding:12px 18px}
+#content[data-page="analysis"] .axis-card{padding:14px 18px 16px}
+
+#content[data-page="analysis"] .mb-16{margin-bottom:11px}
+#content[data-page="analysis"] .mt-16{margin-top:11px}
+#content[data-page="analysis"] .mt-20{margin-top:13px}
+
+#content[data-page="analysis"] .metric-item{padding:9px 11px}
+#content[data-page="analysis"] .metric-value{font-size:15px}
+#content[data-page="analysis"] .metric-label{font-size:10.5px}
+
+#content[data-page="analysis"] .card-title{font-size:13.5px}
+#content[data-page="analysis"] .alert{padding:10px 13px;font-size:12px}

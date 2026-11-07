@@ -50,9 +50,10 @@ export function renderOutlook(root, data, ctx) {
 
   el.innerHTML = `
     ${forecastCard(fc, scen)}
+    ${tsCard(data.ts)}
     ${adviceCard(adv)}`;
 
-  drawFanChart(fc);
+  drawFanChart(fc, data.ts);
 
   el.querySelector('#btnCalib')?.addEventListener('click', (e) => {
     runCalibration(e.target, data.symbol, fc.days);
@@ -182,20 +183,10 @@ function forecastCard(fc, scen) {
       </span>
     </div>
 
-    <div class="chart-dark"><div id="fanChart" class="chart" style="height:320px"></div></div>
+    <div class="chart-dark"><div id="fanChart" class="chart" style="height:300px"></div></div>
 
     <div class="card-pad" style="border-top:1px solid var(--border)">
-      <div class="grid-3" style="gap:12px">
-        ${scen.map(s => `
-          <div style="padding:12px 14px;border-radius:11px;background:var(--surface-2)">
-            <div class="fs-11 text-3">${esc(s.name)}情景（${fc.days} 日）</div>
-            <div class="num fw-700 mt-8" style="font-size:17px">${thousand(s.price)}</div>
-            <div class="fs-12 num mt-8 ${s.ret > 0 ? 'up' : s.ret < 0 ? 'down' : 'text-3'}">
-              ${s.ret > 0 ? '+' : ''}${(s.ret * 100).toFixed(1)}%
-            </div>
-            <div class="fs-11 text-3 mt-8">${esc(s.prob)}</div>
-          </div>`).join('')}
-      </div>
+      ${rangeBlock(fc)}
 
       <div class="grid-2 mt-16" style="grid-template-columns:1fr 1fr">
         <div>
@@ -387,9 +378,154 @@ function adviceCard(adv) {
 }
 
 // ============================================================
+// 区间展示（区间要显示成区间，而不是三个单点）
+// ============================================================
+function rangeBlock(fc) {
+  const b = fc.bands;
+  const start = fc.start_price;
+  const lo90 = b.p05[b.p05.length - 1];
+  const hi90 = b.p95[b.p95.length - 1];
+  const lo50 = b.p25[b.p25.length - 1];
+  const hi50 = b.p75[b.p75.length - 1];
+  const mid = b.p50[b.p50.length - 1];
+
+  // 以 90% 区间为画布，把 50% 区间和中位按比例放进去
+  const span = Math.max(hi90 - lo90, 1);
+  const posOf = (v) => Math.max(0, Math.min(100, (v - lo90) / span * 100));
+
+  const pct = (v) => {
+    const r = (v / start - 1) * 100;
+    return `${r > 0 ? '+' : ''}${r.toFixed(1)}%`;
+  };
+
+  const band = (lo, hi, color) => {
+    const left = posOf(lo);
+    const width = Math.max(posOf(hi) - left, 1.5);
+    return `<div style="position:absolute;left:${left}%;width:${width}%;height:22px;
+            background:${color};border-radius:4px;top:50%;transform:translateY(-50%)"></div>`;
+  };
+
+  return `
+  <div style="padding:14px 16px;background:var(--surface-2);border-radius:12px">
+    <div class="flex between center mb-12">
+      <div class="fs-12 fw-600">${fc.days} 个交易日后的价格区间</div>
+      <div class="fs-11 text-3">起点 ${thousand(start)}</div>
+    </div>
+
+    <div style="position:relative;height:40px;margin:0 4px 10px">
+      ${band(lo90, hi90, 'rgba(79,70,229,.14)')}
+      ${band(lo50, hi50, 'rgba(79,70,229,.30)')}
+      <div style="position:absolute;left:${posOf(mid)}%;top:2px;bottom:2px;width:2px;
+           background:var(--primary);transform:translateX(-1px)"></div>
+    </div>
+
+    <div class="grid-3" style="gap:10px">
+      <div style="padding:10px 12px;border-radius:10px;background:#fff;
+                  border:1px solid var(--border)">
+        <div class="fs-11 text-3">90% 区间（5% ~ 95%）</div>
+        <div class="num fw-700 mt-8" style="font-size:14px">
+          ${thousand(lo90)} <span class="text-3">~</span> ${thousand(hi90)}
+        </div>
+        <div class="fs-11 text-3 mt-8">${pct(lo90)} ~ ${pct(hi90)}</div>
+      </div>
+
+      <div style="padding:10px 12px;border-radius:10px;background:#fff;
+                  border:1px solid var(--border)">
+        <div class="fs-11 text-3">50% 区间（25% ~ 75%）</div>
+        <div class="num fw-700 mt-8" style="font-size:14px">
+          ${thousand(lo50)} <span class="text-3">~</span> ${thousand(hi50)}
+        </div>
+        <div class="fs-11 text-3 mt-8">${pct(lo50)} ~ ${pct(hi50)}</div>
+      </div>
+
+      <div style="padding:10px 12px;border-radius:10px;background:#fff;
+                  border:1px solid var(--border)">
+        <div class="fs-11 text-3">中位路径（50% 分位）</div>
+        <div class="num fw-700 mt-8" style="font-size:14px">${thousand(mid)}</div>
+        <div class="fs-11 ${mid >= start ? 'up' : 'down'} mt-8">${pct(mid)}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// 时序模型对比
+// ============================================================
+function tsCard(ts) {
+  if (!ts || ts.error || !ts.backtest) {
+    return `<div class="card mb-16"><div class="card-pad">
+      <div class="fs-12 text-3">时序模型对比暂不可用${ts?.error ? '：' + esc(ts.error) : ''}</div>
+    </div></div>`;
+  }
+
+  const bt = ts.backtest;
+  if (!bt.ok) {
+    return `<div class="card mb-16"><div class="card-pad">
+      <div class="fs-12 text-3">${esc(bt.reason || '无法回测')}</div>
+    </div></div>`;
+  }
+
+  const rows = bt.models.map(m => {
+    const isBest = m.key === bt.best;
+    const isBase = m.key === 'naive';
+    const v = m.vs_naive;
+    const cls = v > 0.5 ? 'up' : v < -0.5 ? 'down' : 'text-3';
+    return `
+    <tr style="${isBest ? 'background:var(--primary-soft)' : ''}">
+      <td>
+        <span class="${isBest ? 'fw-600' : ''}">${esc(m.name)}</span>
+        ${isBase ? '<span class="tag tag-neutral" style="margin-left:6px;font-size:10px">基准</span>' : ''}
+        ${isBest && !isBase ? '<span class="tag tag-primary" style="margin-left:6px;font-size:10px">最优</span>' : ''}
+      </td>
+      <td class="num fs-12">${m.mae.toFixed(2)}</td>
+      <td class="num fs-12">${m.mape.toFixed(2)}%</td>
+      <td class="num fs-12">${m.dir_hit == null ? '—' : m.dir_hit.toFixed(0) + '%'}</td>
+      <td class="num fs-12 ${cls}">${isBase ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%'}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div class="card mb-16">
+    <div class="card-head">
+      <div>
+        <div class="card-title">时序模型对比</div>
+        <div class="card-sub" style="margin-top:2px">
+          ${bt.windows} 个检验窗口的样本外误差 · 与「随机游走」基准对比
+        </div>
+      </div>
+      <span class="tag ${bt.best_usable ? 'tag-down' : 'tag-warn'}">
+        ${bt.best_usable ? '有模型优于基准' : '未跑赢基准'}
+      </span>
+    </div>
+    <div class="card-pad" style="padding:14px 18px">
+      <div class="table-wrap">
+        <table class="table" style="font-size:12.5px">
+          <thead><tr>
+            <th>模型</th><th>MAE</th><th>MAPE</th><th>方向命中</th><th>vs 基准</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+
+      <div class="alert ${bt.best_usable ? 'alert-info' : 'alert-warn'} mt-12" style="font-size:12px">
+        ${esc(bt.conclusion)}
+      </div>
+
+      <div class="fs-11 text-3 mt-12" style="line-height:1.7">
+        MAE = 平均绝对误差（越小越好）· MAPE = 平均绝对百分比误差 ·
+        方向命中 = 涨跌方向猜对的占比（随机游走永远预测持平，不参与统计）·
+        「vs 基准」为正表示比随机游走更准。<br>
+        <b>注意：模型排名依赖样本区间。</b>同一只股票换一段时间回测，
+        排名可能完全不同 —— 这也是为什么只用它做参考，不用它做决策。
+      </div>
+    </div>
+  </div>`;
+}
+
+// ============================================================
 // 扇形图
 // ============================================================
-function drawFanChart(fc) {
+function drawFanChart(fc, ts) {
   const el = document.getElementById('fanChart');
   if (!el || !window.echarts) return;
 
@@ -476,6 +612,18 @@ function drawFanChart(fc) {
           ],
         },
       },
+    // 单条时序模型路径（只有它在回测里真的跑赢基准时才画）
+      // 不赢基准还画出来，就等于拿一条没有依据的线误导人
+      ...(ts && ts.backtest?.ok && ts.backtest.best_usable && ts.paths?.[ts.backtest.best]
+        ? [{
+            name: ts.labels?.[ts.backtest.best] || '时序模型',
+            type: 'line',
+            data: ts.paths[ts.backtest.best],
+            symbol: 'none',
+            z: 6,
+            lineStyle: { width: 1.6, color: '#fbbf24', type: 'dashed' },
+          }]
+        : []),
     ],
   });
 }

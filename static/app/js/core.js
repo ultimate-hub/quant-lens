@@ -12,6 +12,8 @@ import {
 // 路由
 // ============================================================
 const PAGES = {
+  heatmap:   { module: './pages/heatmap.js' },
+  portfolio: { module: './pages/portfolio.js' },
   analysis:  { module: './pages/analysis.js' },
   screen:    { module: './pages/screen.js' },
   watchlist: { module: './pages/watchlist.js' },
@@ -22,11 +24,14 @@ const PAGES = {
   settings:  { module: './pages/settings.js' },
 };
 
+/** 打开软件时默认落到哪一页 */
+const DEFAULT_PAGE = 'heatmap';
+
 function parseHash() {
   const raw = location.hash.replace(/^#\/?/, '');
   const [path, query] = raw.split('?');
   return {
-    page: path || 'analysis',
+    page: path || DEFAULT_PAGE,
     params: Object.fromEntries(new URLSearchParams(query || '')),
   };
 }
@@ -43,7 +48,7 @@ export function makeCtx(params) {
 
 async function renderPage() {
   const { page, params } = parseHash();
-  const def = PAGES[page] || PAGES.analysis;
+  const def = PAGES[page] || PAGES[DEFAULT_PAGE];
 
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
 
@@ -53,6 +58,9 @@ async function renderPage() {
   $('profileSelect').classList.toggle('hidden', !['analysis', 'screen'].includes(page));
 
   const content = $('content');
+  // 给内容区打上页面标记，CSS 才能按页面做差异化排版
+  // （比如个股分析页要更紧凑，市场全景页要更宽松）
+  content.dataset.page = page;
   content.innerHTML = '<div class="loading"><div class="spinner"></div><span>加载中…</span></div>';
 
   try {
